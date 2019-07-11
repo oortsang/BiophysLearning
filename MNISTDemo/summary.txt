@@ -1,0 +1,19 @@
+Three main python things that semi-worked:
+
+1. LinearNN.py
+  Linear regression using the neural network framework of PyTorch, mostly for practice.
+  Linear regression went pretty well.
+
+2. nonlinearregression.py
+  Tried some polynomial regression which did not end up going very well.
+  The main problem is that the data went up to x=100, at which point the x^2 term dominated completely and it was hard for the gradient to make any adjustments to anyone else.
+  The other problem is that if you increase the learning rate too much, then the system can quickly spiral out of control and overflows.
+
+3. mnistVAE.py
+  Went relatively well!
+  Currently has two fully connected hidden layers inside.
+  When there are only two latent variables allowed, the reconstruction is not great. But if we increase it to 10-20 then the image quality gets much better quite quickly.
+  Would be fun to try to compress things farther and clip the accuracy of the latent variables for good storage.
+
+  And as the name suggests, it's a variational autoencoder. Goes between MSE and BCE loss but both seem to produce relatively good results.
+  

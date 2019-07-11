@@ -1,0 +1,6 @@
+Things to do:
+  1. Rewrite the linear/nonlinear regression stuff in terms of a module/single-layer perceptron
+  2. Add a hidden layer to see if it can find quadratic terms
+  3. ???
+  4. VAE on something easy?
+  5. VAE on MNIST (maybe using a CNN?)
