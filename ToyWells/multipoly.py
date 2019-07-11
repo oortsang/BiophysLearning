@@ -19,37 +19,52 @@ class MultiPolynomial():
     def eval(self, x):
         x = np.array(x)
         x = np.atleast_1d(x)
+        # pdb.set_trace()
+        if self.coeffs.ndim == 1 and x.ndim == 1 and x.shape[0] > 1:
+            x = x[:,np.newaxis]
         orig_dim  = x.ndim
         x = np.atleast_2d(x)
         input_dim = x.shape[-1]
-        # need to take care of the dimension business...
+        
         res = []
-        # pdb.set_trace()
-        for i, xi in enumerate(x): # for each example
-            ind_x_pows = np.vander(xi, self.degree)
-            x_pows = ind_x_pows[0]
-            for i in range(1, xi.shape[0]):
-                x_pows = x_pows[...,np.newaxis] * ind_x_pows[i]
-            tmp = self.coeffs * x_pows
-            res.append(tmp)
+        coeffs = self.coeffs
+        if not self.return_vector:
+            coeffs = self.coeffs[np.newaxis,:]
+        # iterate through different coefficient stuff -- for vector-valued functions
+        # newaxis above is for scalar functions to maintain behavior without the for loop
+        for c in coeffs:
+            for i, xi in enumerate(x): # for each example
+                ind_x_pows = np.vander(xi, self.degree)
+                x_pows = ind_x_pows[0]
+                for i in range(1, xi.shape[0]):
+                    x_pows = x_pows[...,np.newaxis] * ind_x_pows[i]
+                tmp = c * x_pows
+                res.append(tmp)
         res = np.array(res)
         if res.ndim < 4:
             res = res[np.newaxis,:]
-        #or orig_dim > coeffs.ndim:
         res = res.squeeze()
-        leave_dims = 1 if self.return_vector else 0
-        dimgap = self.coeffs.ndim - input_dim + (orig_dim-1)
-        leave_dims += dimgap
-        pdb.set_trace()
-
-        # summed = res.sum(axis=tuple(range(res.ndim-1, 1,-1)))
-        leave_dims = np.max((0, leave_dims))
+        leave_dims = np.max((0, self.coeffs.ndim - input_dim + (orig_dim-1)))
         summed = res.sum(axis=tuple(range(res.ndim-1, leave_dims-1, -1)))
         # add a correction to distinguish Vector-Valued 2D from scalar 3D...
         return np.squeeze(summed)
 
     def grad(self):
-        pass
+        # pdb.set_trace()
+        if self.return_vector:
+            print("Jacobians are too hard at the moment")
+            return None
+        vdim = self.coeffs.ndim
+        new_coeffs = np.zeros((vdim, *self.coeffs.shape))
+        dlen = self.coeffs.shape[-1]
+        diff_mat = np.zeros((dlen, dlen))
+        idcs = np.arange(dlen-1)
+        diff_mat[idcs+1, idcs] = np.arange(dlen-1, 0, -1)
+
+        for dim in range(vdim):
+            tmp_coeffs = self.coeffs.swapaxes(0,dim)
+            new_coeffs[dim] = np.dot(diff_mat, tmp_coeffs).swapaxes(0,dim)
+        return MultiPolynomial(new_coeffs, return_vector = True)
     
     def __call__(self, x):
         # convenient syntax like f(3, 4)
@@ -70,12 +85,31 @@ class MultiPolynomial():
         return ret_string
 
 
-F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]])
-H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]]))
-J = MultiPolynomial([1,0,0])
-print(F([2,3])) # expect 72
-print(H([1,1,1])) # expect 4
-print(H([[1,1,1],[0,0,0]])) # expect [4 0]
-print(J(3)) # expect 9
-print(J([3])) # expect 9
-print(J([3,4])) # expect [9 16]
+F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
+H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree
+J = MultiPolynomial([1,2,1]) # 1D Polynomial
+
+print(H([-1,4,2])) # expect scalar
+G = F.grad()
+G0 = MultiPolynomial(G.coeffs[0])
+G1 = MultiPolynomial(G.coeffs[1])
+print(G([-1, 4])) # expect 2D vector
+
+
+# G = MultiPolynomial([[[0,1],[1,1]], [[1,0],[0,1]]], return_vector = True)
+# G0 = MultiPolynomial([[0,1],[1,1]])
+# G1 = MultiPolynomial([[1,0],[0,1]])
+
+print(G([1,2]))  # should give [4 3]
+print(G0([1,2])) # should get 4
+print(G1([1,2])) # should get 3
+
+# scalar outputs working nicely
+print("Want 72       - ", F([2,3]))             # # 1 2D input  -> 1 1D output
+print("Want [72 296] - ", F([[2,3],[4,5]]))     # # 2 2D inputs -> 2 1D outputs
+print("Want 4        - ", H([1,1,1]))           # # 1 3D input  -> 1 1D output
+print("Want [4 0]    - ", H([[1,1,1],[0,0,0]])) # # 2 3D inputs -> 2 1D outputs
+print("Want 16       - ", J(3))                 # # 1 1/0D input-> 1 1D output
+print("Want 16       - ", J([3]))               # # 1 1D input  -> 1 1D output
+print("Want [16 25]  - ", J([[3],[4]]))         # # 2 1D inputs -> 2 1D outputs
+print("Want [16 25]  - ", J([3,4]))             # # 2 1D inputs -> 2 1D outputs
