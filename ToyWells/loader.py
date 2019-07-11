@@ -2,6 +2,7 @@ import os
 import numpy as np
 import h5py as h5
 from torch.utils import data
+from sklearn.decomposition import PCA
 
 class MyData(data.TensorDataset):
     def __init__(self, fname, transform = None):
@@ -29,8 +30,18 @@ def normalize(dataset):
         normdata[:,i] = (dataset[:,i]-mu)/sig
     return normdata[500:] # smooth out the beginning
 
+def pcaify(dataset):
+    pca = PCA()
+    pca_latent = pca.fit_transform(dataset.data[:])
+    # pca_latent[:,n_z:] = 0
+    # pca_guesses = pca.inverse_transform(pca_latent)
+    return pca_latent[500:]
+
+
+
 rawfile = "SimOutput.h5"
 norfile = "NormalizedSimOutput.h5"
+pcafile = "PCANormdSimOutput.h5"
 
 if os.path.getmtime(rawfile) > os.path.getmtime(norfile):
     # if the raw file is more recent than the normalized file, redo it
@@ -42,8 +53,20 @@ if os.path.getmtime(rawfile) > os.path.getmtime(norfile):
     h5file.create_dataset('particle_tracks', data=normalized_data)
     h5file.close()
 
+if os.path.getmtime(rawfile) > os.path.getmtime(pcafile):
+    # if the pca file is more recent than the normalized file, redo it
+    print("Normalizing the simulation data...")
+    raw_sim_data = MyData(rawfile)
+    pca_data = pcaify(raw_sim_data)
+
+    h5file = h5.File(pcafile, 'w')
+    h5file.create_dataset('particle_tracks', data=pca_data)
+    h5file.close()
+    
+
 raw_sim_data = MyData(rawfile)
 sim_data = MyData(norfile)
+pca_sim_data = MyData(pcafile)
 
 
 # # open the simulation output

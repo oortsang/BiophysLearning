@@ -64,7 +64,9 @@ class MultiPolynomial():
         for dim in range(vdim):
             tmp_coeffs = self.coeffs.swapaxes(0,dim)
             new_coeffs[dim] = np.dot(diff_mat, tmp_coeffs).swapaxes(0,dim)
-        return MultiPolynomial(new_coeffs, return_vector = True)
+        if vdim == 1:
+            new_coeffs = new_coeffs[0]
+        return MultiPolynomial(new_coeffs, return_vector = vdim > 1)
     
     def __call__(self, x):
         # convenient syntax like f(3, 4)

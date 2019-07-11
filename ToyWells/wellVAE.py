@@ -20,16 +20,11 @@ from torchvision import datasets
 
 ###  Initializing data set  ###
 
-from loader import sim_data
+from loader import sim_data as sim_data
 # from loader import raw_sim_data as sim_data
-
-# # vxlabs' guide says transform = torchvision.transforms.ToTensor()
-# mnist_trainset = datasets.MNIST(root='./data', train=True,  download=True, transform=torchvision.transforms.ToTensor())
-# mnist_testset  = datasets.MNIST(root='./data', train=False, download=True, transform=torchvision.transforms.ToTensor())
+# from loader import pca_sim_data as sim_data
 
 print("... finished l0ad1ng!")
-
-# torch.random.manual_seed(17)
 
 ###  A couple Hyperparameters  ###
 n_epochs = 20
@@ -45,11 +40,11 @@ test_loader = DataLoader(sim_data, batch_size = 400, shuffle = False, num_worker
 # test_loader  = DataLoader(mnist_testset,  batch_size = bsize, shuffle=True)
 data_type = torch.float
 
-in_dim  = 3
+in_dim  = 8
 hsize = 3
 
 # dimensionality of latent space
-n_z = 1
+n_z = 2
 lr = 1e-3
 weight_decay = 0
 pmomentum = 1e-4
@@ -236,7 +231,7 @@ def test():
         outputs[b_idx*bsize:b_idx*bsize+csize,:] = recon
     return outputs
 
-def test2(model = vae_model, plot = True, axes=(2,2), ret = False):
+def test2(model = vae_model, plot = True, axes=(3,3), ret = False):
     bigdata = torch.tensor(sim_data.data[:])
     outputs = model(bigdata).detach().numpy()
     bigdata = bigdata.detach().numpy()
@@ -257,7 +252,7 @@ def test2(model = vae_model, plot = True, axes=(2,2), ret = False):
         return outputs, latents
 
 naive = sim_data[-40000:].mean(0)
-naive_loss = ((naive - sim_data.data)**2).sum(1).mean()
+naive_loss = ((naive - sim_data.data[:])**2).sum(1).mean()
 print("A naive guess from taking averages of the last 40000 positions yields a loss of", naive_loss)
 
 pca_start = time.time()

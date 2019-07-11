@@ -14,7 +14,7 @@ sim_data = h5_sim_data[:] # numpy array
 
 print("Done Loading!")
 
-n_z = 1
+n_z = 2
 
 pca = PCA()
 X = pca.fit_transform(sim_data)
@@ -23,13 +23,18 @@ X_clipped[:, :n_z] = X[:, :n_z] # only copy the first n_z rows
 
 reconstd = pca.inverse_transform(X_clipped)
 
+
+# this loss value is not right
+# pca_guesses = pca.inverse_transform(reconstd)
+# pca_loss = ((pca_guesses - sim_data.data[:])**2).sum(1).mean()
+# print("PCA gets a loss of %f" % pca_loss)
 # plt.plot(sim_data[:,:2])
 # plt.plot(reconstd[:,:2])
 # plt.show()
 
 
-dimensions = 3
-axes = (2,2)
+dimensions = 8
+axes = (3,3)
 
 
 plt.subplot(*axes, 1)
