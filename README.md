@@ -1,2 +1,2 @@
 # BiophysLearning
-ML Research for Roux Lab at UChicago
+ML Research for Roux Group at UChicago
