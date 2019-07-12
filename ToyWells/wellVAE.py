@@ -11,43 +11,37 @@ import pdb
 import time
 from sklearn.decomposition import PCA
 
-
-
-# Get the MNIST data
-import torchvision
-from torchvision import datasets
-
-
 ###  Initializing data set  ###
 
 from loader import sim_data as sim_data
 # from loader import raw_sim_data as sim_data
 # from loader import pca_sim_data as sim_data
 
-print("... finished l0ad1ng!")
+print("... finished loading!")
 
 ###  A couple Hyperparameters  ###
 n_epochs = 20
-bsize = 80 # batch size
+batch_size = 80 # batch size
 # smaller batches seem to be able to get out of local minima better
+# but larger batches provide better stability
+print("Batch size:", batch_size)
 
-print("Batch size:", bsize)
 
-train_loader = DataLoader(sim_data, batch_size = bsize, shuffle = True, num_workers = 4)
+train_loader = DataLoader(sim_data, batch_size = batch_size, shuffle = True, num_workers = 4)
 test_loader = DataLoader(sim_data, batch_size = 400, shuffle = False, num_workers = 4)
 
-# train_loader = DataLoader(mnist_trainset, batch_size = bsize, shuffle=True, num_workers=4)
-# test_loader  = DataLoader(mnist_testset,  batch_size = bsize, shuffle=True)
-data_type = torch.float
+data_type = torch.float # helps with consistency of type -- alternative is torch.double
 
-in_dim  = 8
-hsize = 3
+# Network dimensions
+in_dim  = 5 # input dimension
+hsize = 4   # size of hidden layers
+n_z = 3  # dimensionality of latent space
 
-# dimensionality of latent space
-n_z = 2
-lr = 1e-3
-weight_decay = 0
-pmomentum = 1e-4
+# learning algorithm hyperparameters
+# (Currently set to Adam rather than SGD)
+lr = 1e-3         # learning rate
+weight_decay = 0  # weight decay
+pmomentum = 1e-4  # momentum
 
 kl_lambda = 1 # effectively gives more weight to reconstruction loss
 # as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2
@@ -56,7 +50,7 @@ kl_lambda = 1 # effectively gives more weight to reconstruction loss
 # holds both encoder and decoder
 class VAE(nn.Module):
     def __init__(self):
-        super(VAE, self).__init__()
+        super(VAE, self).__init__() # initialization inherited from nn.Module
         self.always_random_sample = False # for the sampling process of latent variables
 
         # set up the encoder
@@ -93,22 +87,22 @@ class VAE(nn.Module):
     def encode(self, x):
         self.x = x
         self.mu     = self.encode_net_means(x)
-        self.logsig = self.encode_net_vars(x)
-        self.z = (self.mu, self.logsig)
+        self.logvar = self.encode_net_vars(x)
+        self.z = (self.mu, self.logvar)
         return self.z
 
-    # Does the sampling outside
-    def sample(self, mu, logsig):
+    # Does the sampling outside of the backpropagation
+    def sample(self, mu, logvar):
         # In training mode, we want to carry the propagation through
         # otherwise, we just return the maximum likelihood mu
         # Can always change this in the __init__ function
         res = mu
         variational = True # False basically sets it to autoencoder status (but not quite b/c of the loss function)
         if variational and self.training or self.always_random_sample:
-            epsshape = (bsize, n_z) if logsig.dim == 2 else n_z
+            epsshape = (batch_size, n_z) if logvar.dim == 2 else n_z
             eps = torch.tensor(np.random.normal(0, 1, epsshape), dtype=data_type)
             # a randomly pulled number for each example in the minibatch
-            res += torch.exp(logsig*0.5) * eps # elementwise multiplication is desired
+            res += torch.exp(logvar*0.5) * eps # elementwise multiplication is desired
         return res
 
     # Takes a single z sample and attempts to reconstruct a ~16-dim simulation ~
@@ -132,34 +126,35 @@ class VAE(nn.Module):
         # Decoding seems to be returning the max-likelihood output rather than a full prob dist
         return x_decoded
 
-    # # Use dimension-wise square loss since it's Gaussian...?
-    def vae_loss(self, pred, truth):
-        # ***** may need to reshape pred to help the comparison
-        # pred.reshape(truth.shape) # but might not be necessary
-        # E[log P (x | z)]
-        # rec_loss = (nn.BCELoss(reduction = 'sum'))(pred, truth) # doesn't work for some reason...
-        self.rec_loss = torch.sum((pred - truth)**2)
 
-        # KL[Q(z|x) || P(z|x)]
-        # as appears in https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
+    def vae_loss(self, pred, truth):
+        # E[log P (x | z)] - Reconstruction loss
+        # 
+        # Use dimension-wise square loss since it's Gaussian
+        # 
+        # Say that the likelihood of reconstructing x from latent variable z
+        # is described by a Gaussian centered around the original x...
+        self.rec_loss = torch.sum((pred - truth)**2) # maybe replace with a pytorch function...
+
+        # KL[Q(z|x) || P(z|x)] - Kullback-Leibler divergence
+        # E [ log(Q(z|x)) - log(P(z|x)) ] using Q for the weighting on the expected value
+        # in Information-Theoretic terms, the expected gain in information/description length
+        # when pulling from probability distribution P instead of Q (expectation taken over Q)
+        
+        # Equation from https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
         # but probably in some paper (2-3 lines from Doersch + diagonal covariance matrix assn.)
-        # kl_div   = 0.5 * torch.sum(torch.exp(self.logsig)+self.mu*self.mu-1-self.logsig, dim=1)
-        kl_div   = 0.5 * torch.sum(torch.exp(self.logsig)+self.mu*self.mu-1-self.logsig)
-        # also maybe try to replace with a pytorch library fxn later...
-        return (self.rec_loss + kl_lambda*kl_div)/bsize
+        # kl_div   = 0.5 * torch.sum(torch.exp(self.logvar)+self.mu*self.mu-1-self.logvar, dim=1)
+        kl_div   = 0.5 * torch.sum(torch.exp(self.logvar)+self.mu*self.mu-1-self.logvar)
+        return (self.rec_loss + kl_lambda*kl_div)/batch_size
 
     def plot_last_run(self, axes = (3,2)):
         # want to trace how the reconstruction compares to the input
         input = self.x.detach().numpy()
         saved = self.z[0].detach().numpy()
         output = self.forward(self.x).detach().numpy()
-        # input = np.ndarray.flatten(input)
-        # saved = np.ndarray.flatten(saved)
-        # output = np.ndarray.flatten(output)
         plt.subplot(*axes, 1)
         plt.title("Latent variables")
         plt.plot(saved)
-        # plt.show()
         
         for part in range(input.shape[1]):
             plt.subplot(*axes,2+part)
@@ -168,19 +163,6 @@ class VAE(nn.Module):
             plt.plot(output[:,part], label = "Reconstructed guess")
             plt.legend()
         plt.show()
-        
-        # plt.title("Particle 1")
-        # plt.plot(input[:,0], label = "Input")
-        # plt.plot(output[:,0], label = "Reconstructed guess")
-        # plt.legend()
-        # plt.show()
-
-        # plt.title("Particle 2")
-        # plt.plot(input[:,1], label = "Input")
-        # plt.plot(saved, label = "Latent variable")
-        # plt.plot(output[:,1], label = "Reconstructed guess")
-        # plt.legend()
-        # plt.show()
 
 ###  train the network!  ###
 vae_model = VAE()
@@ -194,18 +176,13 @@ def trainer(model, epoch):
     # run through the mini batches!
     bcount = 0
     for b_idx, data in enumerate(train_loader):
-        # if b_idx == 45:
-        #     pdb.set_trace()
         model.train() # set training mode
         optimizer.zero_grad()
-        # data = data.view(-1, in_dim) # reshape to make things play nicely
         recon = model(data)
         loss  = model.vae_loss(recon, data)
         loss_scalar = loss.item()
-        rec_loss = model.rec_loss.item()/bsize
-        # epoch_fail += loss_scalar
+        rec_loss = model.rec_loss.item()/batch_size
         epoch_fail += rec_loss
-        # loss_array.append(loss_scalar)
         loss.backward()
         optimizer.step()
         bcount += 1
@@ -216,9 +193,6 @@ def trainer(model, epoch):
     print("Epoch %d has an average reconstruction loss of  %f" % (epoch, epoch_fail/bcount))
     # not accurate though because this isn't looking at the reconstruction loss at the end of the epoch...
     # but recomputing everything gives a avery unstable output
-
-    # for p in vae_model.parameters():
-    #     print("Parameter: ", p)
     models.append(vae_model)
 
 # try to recreate the original data set
@@ -228,7 +202,7 @@ def test():
     for b_idx, data in enumerate(test_loader):
         recon = vae_model(data).detach().numpy()
         csize = data.shape[0]
-        outputs[b_idx*bsize:b_idx*bsize+csize,:] = recon
+        outputs[b_idx*batch_size:b_idx*batch_size+csize,:] = recon
     return outputs
 
 def test2(model = vae_model, plot = True, axes=(3,3), ret = False):
@@ -238,7 +212,7 @@ def test2(model = vae_model, plot = True, axes=(3,3), ret = False):
     latents = model.z[0].detach().numpy() # just give the means...
     if plot:
         plt.subplot(*axes, 1)
-        plt.title("Latent variable(s)")
+        plt.title("Latent variable%s (%d)" % (("s" if n_z>1 else ""), n_z))
         plt.plot(latents)
         for i in range(in_dim):
             plt.subplot(*axes, 2+i)

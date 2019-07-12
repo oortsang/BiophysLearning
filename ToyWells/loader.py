@@ -39,9 +39,9 @@ def pcaify(dataset):
 
 
 
-rawfile = "SimOutput.h5"
-norfile = "NormalizedSimOutput.h5"
-pcafile = "PCANormdSimOutput.h5"
+rawfile = "data/SimOutput.h5"
+norfile = "data/NormalizedSimOutput.h5"
+pcafile = "data/PCANormdSimOutput.h5"
 
 if os.path.getmtime(rawfile) > os.path.getmtime(norfile):
     # if the raw file is more recent than the normalized file, redo it

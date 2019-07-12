@@ -7,11 +7,9 @@ import h5py
 from multipoly import MultiPolynomial
 
 # FF = MultiPolynomial([[13,1,-4,4],[0,-2,0,3]])
-FF = MultiPolynomial([[0,0,1], [0,1,2],[1,-2, 4]])
-GG = FF.grad()
-# f = Polynomial(np.array([1,4,4]))
-# g = f.grad()
-# xs = np.arange(-10,10, 0.1)
+# FF = MultiPolynomial([[0,0,1], [0,1,2],[1,-2, 4]])
+# GG = FF.grad()
+
 
 # Brownian motion / taking random steps
 
@@ -69,13 +67,12 @@ QWell = MultiPolynomial(QCoeffs)
 HWell = MultiPolynomial([              1, 0, 0])
 DWell = 5e-2*MultiPolynomial([5,   0, -1, 0, 0])
 SWell = MultiPolynomial([1,        0, -3, 0, 0])
-p2well = MultiPolynomial([0.5, 1, 4])
 
 
 # CromWell next
 
 p1 = Particle(TWell, pos = np.array([0.5, -0.7]), nsize = 3, DkT = 0.1)
-p2 = Particle(p2well, pos = -2, nsize = 5e-1)
+p2 = Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 5e-1)
 p3 = Particle(SWell, pos = 0.1, nsize = 5, DkT = 0.1)
 
 
@@ -99,7 +96,7 @@ plt.show()
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 7
+npart = 4
 particles = [p1, p2, p3,
              Particle(2*DWell, nsize = 0.5, DkT = 0.5),                            # 4
              Particle(MultiPolynomial([0.01, 0, -1]), pos = 0, nsize = 1),         # 5 # moves around a lot
@@ -132,17 +129,16 @@ for i in tqdm(range(tracks.shape[0])):
         j+= pdim
 
 
-if True:
-    h5file = h5py.File('SimOutput.h5', 'w')
+if False:
+    h5file = h5py.File('data/SimOutput.h5', 'w')
     h5file.create_dataset('particle_tracks', data=tracks)
     h5file.close()
 
 # # To open:
-# h5file = h5py.File('SimOutput.h5', 'r')
+# h5file = h5py.File('data/SimOutput.h5', 'r')
 # b = h5file['particle_tracks'][:]
 # h5file.close()
 
 
 plt.plot(tracks)
-# plt.plot(-tracks[:,0])
 plt.show()

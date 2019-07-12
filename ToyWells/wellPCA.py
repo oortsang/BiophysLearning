@@ -33,7 +33,7 @@ reconstd = pca.inverse_transform(X_clipped)
 # plt.show()
 
 
-dimensions = 8
+dimensions = 5
 axes = (3,3)
 
 
@@ -44,7 +44,6 @@ plt.plot(X_clipped[:,:n_z])
 for i in range(dimensions):
     plt.subplot(*axes, 2+i)
     plt.title("Particle %d" % (i+1))
-    #plt.plot(X_clipped[:,i], label = ("Input %d"% (i+1)))
     plt.plot(sim_data[:,i], label = ("Input %d"% (i+1)))
     plt.plot(reconstd[:,i], label = ("Reconstruction %d" % (i+1)))
     plt.legend()
