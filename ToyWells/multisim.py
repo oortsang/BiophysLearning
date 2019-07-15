@@ -117,7 +117,7 @@ nsteps = 100000
 dimensions = 0
 for i in range(npart):
     dimensions += particles[i].dim
-    
+print("Dimensions:", dimensions)    
 tracks = np.zeros((nsteps, dimensions), dtype=np.float32)
 for i in tqdm(range(tracks.shape[0])):
     j = 0
@@ -128,8 +128,7 @@ for i in tqdm(range(tracks.shape[0])):
         tracks[i,j:j+pdim] = p.pos
         j+= pdim
 
-
-if False:
+if True:
     h5file = h5py.File('data/SimOutput.h5', 'w')
     h5file.create_dataset('particle_tracks', data=tracks)
     h5file.close()

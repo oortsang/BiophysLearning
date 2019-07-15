@@ -41,8 +41,8 @@ from loader import sim_data as sim_data # normalized dimensions
 print("... finished loading!")
 
 ###  Network Hyperparameters  ###
-n_epochs = 20   # number of times to loop through the data set
-batch_size = 80 # batch size
+n_epochs = 20    # number of times to loop through the data set
+batch_size = 400 # batch size
     # Minibatching (computing the gradient from multiple examples) helps with performance and stability,
     # but using smaller batches seems to help get out of local minima faster.
 print("Batch size:", batch_size)
@@ -57,14 +57,14 @@ optim_fn = optim.Adam
 # optim_fn = optim.SGD
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
-    # But standard Stochastic Gradient Descent is
+    # But standard Stochastic Gradient Descent is supposed to generalize better...
 
 lr = 1e-2           # learning rate
 weight_decay = 1e-3 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-4     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 
-kl_lambda = 1 # How much weight to give to the KL-Divergence term in loss?
+kl_lambda = 0.5 # How much weight to give to the KL-Divergence term in loss?
     # Setting to 0 makes the VAE cloesr to a standard autoencoder and makes the probability distributions less smooth.
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
@@ -80,6 +80,7 @@ data_type = torch.float
 # holds both encoder and decoder
 class VAE(nn.Module):
     def __init__(self):
+        """Set up the variational autoencoder """
         super(VAE, self).__init__() # initialization inherited from nn.Module
         self.always_random_sample = False # for the sampling process of latent variables
 
@@ -114,33 +115,33 @@ class VAE(nn.Module):
             self.encode_net_vars  = self.encode_net_vars.double()
             self.decode_net       = self.decode_net.double()
 
-    # Encoding from x to z
-    # returns the probability distribution in terms of mean and log-var of a gaussian
     def encode(self, x):
+        """Encoding from x (input) to z (latent). 
+        Returns the probability distribution in terms of mean and log-variance of a gaussian"""
         self.x = x
         self.mu     = self.encode_net_means(x)
-        self.logvar = self.encode_net_vars(x)
-        self.z = (self.mu, self.logvar)
+        self.log_var = self.encode_net_vars(x)
+        self.z = (self.mu, self.log_var)
         return self.z
 
-    # Does the sampling outside of the backpropagation
-    def sample(self, mu, logvar):
+    def sample(self, mu, log_var):
+        """Does the sampling outside of the backpropagation (see the reparameterization trick)"""
         # In training mode, we want to carry the propagation through
         # otherwise, we just return the maximum likelihood mu
         # Can always change this in the __init__ function
         res = mu
         variational = True # False basically sets it to autoencoder status (but not quite b/c of the loss function)
         if variational and self.training or self.always_random_sample:
-            epsshape = (batch_size, n_z) if logvar.dim == 2 else n_z
-            eps = torch.tensor(np.random.normal(0, 1, epsshape), dtype=data_type)
-            # a randomly pulled number for each example in the minibatch
-            res += torch.exp(logvar*0.5) * eps # elementwise multiplication is desired
+            eps_shape = (batch_size, n_z) if log_var.dim == 2 else n_z
+            eps = torch.tensor(np.random.normal(0, 1, eps_shape), dtype=data_type)
+            # eps contains a randomly pulled number for each example in the minibatch
+            res += torch.exp(log_var*0.5) * eps # elementwise multiplication is desired
         return res
 
-    # Takes a single z sample and attempts to reconstruct a ~16-dim simulation ~
     def decode(self, z):
+        """Takes a single z sample and attempts to reconstruct the inputs"""
         if False and not self.training:
-            # save the parameters... for visualization purposes
+            # save the parameters ... for visualization purposes
             self.post_first_linear  = self.decode_layers[0](z)
             self.activated          = self.decode_layers[1](self.post_first_linear)
             self.post_second_linear = self.decode_layers[2](self.activated)
@@ -152,10 +153,13 @@ class VAE(nn.Module):
 
     # run through encoder, sampler, and decoder
     def forward(self, x):
+        """Calls the other functions to run a batch/data set through the proper networks"""
         z_dist    = self.encode(x)        # 1. Encode
         z_sample  = self.sample(*z_dist)  # 2. Sample
         x_decoded = self.decode(z_sample) # 3. Decode
-        # Decoding seems to be returning the max-likelihood output rather than a full prob dist
+        # Decoding returns the max-likelihood option rather than a full prob dist
+        # which seems to be desired behavior.. There's an implicit Gaussian centered around
+        # it, which is where we get the square-loss for reconstruction error... see Doersch...
         return x_decoded
 
 
@@ -175,8 +179,8 @@ class VAE(nn.Module):
 
         # Equation from https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
         # but probably in some paper (2-3 lines from Doersch + diagonal covariance matrix assn.)
-        # kl_div   = 0.5 * torch.sum(torch.exp(self.logvar)+self.mu*self.mu-1-self.logvar, dim=1)
-        kl_div   = 0.5 * torch.sum(torch.exp(self.logvar)+self.mu*self.mu-1-self.logvar)
+        # kl_div   = 0.5 * torch.sum(torch.exp(self.log_var)+self.mu*self.mu-1-self.log_var, dim=1)
+        kl_div   = 0.5 * torch.sum(torch.exp(self.log_var)+self.mu*self.mu-1-self.log_var)
         return (self.rec_loss + kl_lambda*kl_div)/batch_size
 
     def run_data(self):
