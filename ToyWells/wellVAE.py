@@ -1,4 +1,24 @@
-#!/usr/bin/python
+# wellVAE.py - Oliver Tsang, July 2019
+#
+# Trains a Variational Autoencoder (VAE) to identify the axes of a BD simulation that contain more
+# signal than noise in relation to the others.
+#   Run this file as the main script (probably with "python3 wellVAE.py" or "python3 -i wellVAE.py")
+#
+#   Uses a network built with PyTorch: two parallel encoding networks -- one to store mean values
+# and one to store log-variances of the probability distribution in the latent space. The restriction
+# on how much it saves is the n_z variable (number of dimensions for latent variable z).
+#   There's a single decoding network that pulls from the probability distribution and tries to
+# recreate the original input.
+#
+# This file comes with several functions to help visualize the predictions and see how well it's doing.
+#
+# See https://arxiv.org/pdf/1606.05908.pdf (Carl Doersch's Tutorial on Variational Autoencoders)
+#     https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
+#     https://vxlabs.com/2017/12/08/variational-autoencoder-in-pytorch-commented-and-annotated/
+# The latter two are tutorials on training a VAE to encode handwritten digits in the MNIST database
+
+# Dependencies: NumPy, Matplotlib, PyTorch, Scikit-Learn, and h5py (through loader.py)
+
 print("Loading...")
 import numpy as np
 import torch
@@ -13,39 +33,49 @@ from sklearn.decomposition import PCA
 
 ###  Initializing data set  ###
 
-from loader import sim_data as sim_data
+# Can also load raw data or data pre-processed by PCA
+from loader import sim_data as sim_data # normalized dimensions
 # from loader import raw_sim_data as sim_data
 # from loader import pca_sim_data as sim_data
 
 print("... finished loading!")
 
-###  A couple Hyperparameters  ###
-n_epochs = 20
+###  Network Hyperparameters  ###
+n_epochs = 20   # number of times to loop through the data set
 batch_size = 80 # batch size
-# smaller batches seem to be able to get out of local minima better
-# but larger batches provide better stability
+    # Minibatching (computing the gradient from multiple examples) helps with performance and stability,
+    # but using smaller batches seems to help get out of local minima faster.
 print("Batch size:", batch_size)
 
+## Network dimensions
+in_dim = 5 # input dimension
+hsize  = 4 # size of hidden layers
+n_z    = 3 # dimensionality of latent space
 
+## Learning Algorithm Hyperparameters
+optim_fn = optim.Adam
+# optim_fn = optim.SGD
+    # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
+    # changes from the last update) and has different learning rates for each parameter.
+    # But standard Stochastic Gradient Descent is
+
+lr = 1e-2           # learning rate
+weight_decay = 1e-3 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+    # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
+momentum = 1e-4     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
+
+kl_lambda = 1 # How much weight to give to the KL-Divergence term in loss?
+    # Setting to 0 makes the VAE cloesr to a standard autoencoder and makes the probability distributions less smooth.
+    # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
+    # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
+
+# DataLoaders to help with minibatching
+# Note that num_workers runs the load in parallel
 train_loader = DataLoader(sim_data, batch_size = batch_size, shuffle = True, num_workers = 4)
 test_loader = DataLoader(sim_data, batch_size = 400, shuffle = False, num_workers = 4)
 
-data_type = torch.float # helps with consistency of type -- alternative is torch.double
-
-# Network dimensions
-in_dim  = 5 # input dimension
-hsize = 4   # size of hidden layers
-n_z = 3  # dimensionality of latent space
-
-# learning algorithm hyperparameters
-# (Currently set to Adam rather than SGD)
-lr = 1e-3         # learning rate
-weight_decay = 0  # weight decay
-pmomentum = 1e-4  # momentum
-
-kl_lambda = 1 # effectively gives more weight to reconstruction loss
-# as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2
-# See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf)
+# helps with consistency of type -- alternative is torch.double
+data_type = torch.float
 
 # holds both encoder and decoder
 class VAE(nn.Module):
@@ -73,6 +103,8 @@ class VAE(nn.Module):
                              ]
         self.decode_net = nn.Sequential(*self.decode_layers)
 
+        # Ensure the networks have the right data types
+        # PyTorch can be touchy if some variables are floats and others are doubles
         if data_type == torch.float:
             self.encode_net_means = self.encode_net_means.float()
             self.encode_net_vars  = self.encode_net_vars.float()
@@ -129,9 +161,9 @@ class VAE(nn.Module):
 
     def vae_loss(self, pred, truth):
         # E[log P (x | z)] - Reconstruction loss
-        # 
+        #
         # Use dimension-wise square loss since it's Gaussian
-        # 
+        #
         # Say that the likelihood of reconstructing x from latent variable z
         # is described by a Gaussian centered around the original x...
         self.rec_loss = torch.sum((pred - truth)**2) # maybe replace with a pytorch function...
@@ -140,107 +172,102 @@ class VAE(nn.Module):
         # E [ log(Q(z|x)) - log(P(z|x)) ] using Q for the weighting on the expected value
         # in Information-Theoretic terms, the expected gain in information/description length
         # when pulling from probability distribution P instead of Q (expectation taken over Q)
-        
+
         # Equation from https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
         # but probably in some paper (2-3 lines from Doersch + diagonal covariance matrix assn.)
         # kl_div   = 0.5 * torch.sum(torch.exp(self.logvar)+self.mu*self.mu-1-self.logvar, dim=1)
         kl_div   = 0.5 * torch.sum(torch.exp(self.logvar)+self.mu*self.mu-1-self.logvar)
         return (self.rec_loss + kl_lambda*kl_div)/batch_size
 
-    def plot_last_run(self, axes = (3,2)):
-        # want to trace how the reconstruction compares to the input
-        input = self.x.detach().numpy()
-        saved = self.z[0].detach().numpy()
-        output = self.forward(self.x).detach().numpy()
-        plt.subplot(*axes, 1)
-        plt.title("Latent variables")
-        plt.plot(saved)
-        
-        for part in range(input.shape[1]):
-            plt.subplot(*axes,2+part)
-            plt.title("Particle %d" % part+1)
-            plt.plot(input[:,part], label = "Input")
-            plt.plot(output[:,part], label = "Reconstructed guess")
-            plt.legend()
-        plt.show()
+    def run_data(self):
+        """Runs the whole dataset through the network"""
+        self.eval()
+        data = torch.tensor(sim_data.data[:], dtype=data_type)
+        recon = self(data).detach().numpy()
+        return recon
+
+    def plot_test(self, plot = True, axes=(3,3), ret = False):
+        """Plots the predictions of the model and its latent variables"""
+        bigdata = torch.tensor(sim_data.data[:])
+        outputs = self(bigdata).detach().numpy()
+        bigdata = bigdata.detach().numpy()
+        latents = self.z[0].detach().numpy() # just give the means...
+        if plot:
+            plt.subplot(*axes, 1)
+            plt.title("Latent variable%s (%d)" % (("s" if n_z>1 else ""), n_z))
+            plt.plot(latents)
+            for i in range(in_dim):
+                plt.subplot(*axes, 2+i)
+                plt.title("Particle %d" % (i+1))
+                # pdb.set_trace()
+                plt.plot(bigdata[:,i], label = ("Input %d"% (i+1)))
+                plt.plot(outputs[:,i], label = ("Reconstruction %d" % (i+1)))
+                plt.legend()
+            plt.show()
+        if ret:
+            return outputs, latents
 
 ###  train the network!  ###
-vae_model = VAE()
-# optimizer = optim.Adam(vae_model.parameters(), lr = lr, weight_decay = weight_decay)
-optimizer = optim.SGD(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = pmomentum)
-# loss_array = []
-models = []
 # run one epoch
-def trainer(model, epoch):
-    epoch_fail = 0 # loss for the epoch
+def trainer(model, optimizer, epoch, models, loss_array):
+    epoch_fail = 0 # loss for the epoch # credit to xkcd for the variable name()
+
     # run through the mini batches!
-    bcount = 0
+    batch_count = 0 # Keep track of how many batches we've run through
     for b_idx, data in enumerate(train_loader):
         model.train() # set training mode
         optimizer.zero_grad()
         recon = model(data)
         loss  = model.vae_loss(recon, data)
         loss_scalar = loss.item()
-        rec_loss = model.rec_loss.item()/batch_size
+        rec_loss = model.rec_loss.item()/batch_size # reconstruction loss
         epoch_fail += rec_loss
-        loss.backward()
-        optimizer.step()
-        bcount += 1
+        loss.backward()  # Ask PyTorch to differentiate the loss w.r.t. parameters in the model
+        optimizer.step() # Ask Adam/SGD to make updates to our parameters
+        batch_count += 1
         if b_idx % 100 == 0:
             print("Train Epoch %d, \tBatch index %d:   \tLoss: %f\tRecLoss: %f" % (epoch, b_idx, loss_scalar, rec_loss))
     # outputs = model(torch.tensor(sim_data.data[:])).detach().numpy()
     # epoch_loss = ((outputs - sim_data.data)**2).sum(1).mean()
-    print("Epoch %d has an average reconstruction loss of  %f" % (epoch, epoch_fail/bcount))
+    print("Epoch %d has an average reconstruction loss of  %f" % (epoch, epoch_fail/batch_count))
     # not accurate though because this isn't looking at the reconstruction loss at the end of the epoch...
     # but recomputing everything gives a avery unstable output
     models.append(vae_model)
+    loss_array.append(epoch_fail/batch_count)
 
-# try to recreate the original data set
-def test():
-    vae_model.eval()
-    outputs = np.zeros(sim_data.data.shape, dtype=np.float32)
-    for b_idx, data in enumerate(test_loader):
-        recon = vae_model(data).detach().numpy()
-        csize = data.shape[0]
-        outputs[b_idx*batch_size:b_idx*batch_size+csize,:] = recon
-    return outputs
+if __name__ == "__main__":
+    # if statement is to make sure the networks can be imported to other files without this code running
+    # However, if you want access to the variables by command line while running the script in interactive
+    # mode, you may want to move everything outside the if statemnt.
+    pass
 
-def test2(model = vae_model, plot = True, axes=(3,3), ret = False):
-    bigdata = torch.tensor(sim_data.data[:])
-    outputs = model(bigdata).detach().numpy()
-    bigdata = bigdata.detach().numpy()
-    latents = model.z[0].detach().numpy() # just give the means...
-    if plot:
-        plt.subplot(*axes, 1)
-        plt.title("Latent variable%s (%d)" % (("s" if n_z>1 else ""), n_z))
-        plt.plot(latents)
-        for i in range(in_dim):
-            plt.subplot(*axes, 2+i)
-            plt.title("Particle %d" % (i+1))
-            # pdb.set_trace()
-            plt.plot(bigdata[:,i], label = ("Input %d"% (i+1)))
-            plt.plot(outputs[:,i], label = ("Reconstruction %d" % (i+1)))
-            plt.legend()
-        plt.show()
-    if ret:
-        return outputs, latents
-
-naive = sim_data[-40000:].mean(0)
+# Compare against a naive guess of averages
+naive = sim_data[-50000:].mean(0)
 naive_loss = ((naive - sim_data.data[:])**2).sum(1).mean()
-print("A naive guess from taking averages of the last 40000 positions yields a loss of", naive_loss)
+print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
 
+# Compare against PCA
 pca_start = time.time()
 pca = PCA()
 pca_latent = pca.fit_transform(sim_data.data[:])
 pca_latent[:,n_z:] = 0
 pca_guesses = pca.inverse_transform(pca_latent)
 pca_loss = ((pca_guesses - sim_data.data[:])**2).sum(1).mean()
-print("PCA gets a loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
+print("PCA gets a reconstruction loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
+
+# Finish initializing the model
+vae_model = VAE()
+if optim_fn == optim.SGD:
+    optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = momentum)
+else:
+    optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay)
+models = [] # Stores old models in case an older one did better
+loss_array = []
+start_time = time.time() # Keep track of run time
 
 # Now actually do the training
-start_time = time.time()
 for epoch in range(n_epochs):
-    trainer(vae_model, epoch)
+    trainer(vae_model, optimizer, epoch, models, loss_array)
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
-    #validate(epoch) # to tell you how it's doing on the test set
+    # validate(epoch) # to tell you how it's doing on the test set

@@ -1,12 +1,20 @@
+# wellPCA.py - Oliver Tsang, July 2019
+# File to demonstrate perfotmance of PCA (Principal Component Analysis)
+# on the same data set as the variational autoencoder.
+# The n_z parameter controls the dimensionality of the latent variables,
+# i.e., the number of axes that are not erased before we attempt to
+# reconstruct the original data set.
+
+# Package dependencies: NumPy, Scikit-Learn, matplotlib, and h5py (for loader.py)
+
 import numpy as np
 import sklearn
 from sklearn.decomposition import PCA
 from matplotlib import pyplot as plt
-# import pandas as pd
-import h5py as h5
+# import h5py as h5
 
 
-import loader # loader.py
+import loader # loader.py is in charge of loading from the *.h5 files (binary file type)
 
 from loader import sim_data as h5_sim_data # normalized
 # from loader import raw_sim_data as h5_sim_data # unnormalized
@@ -14,37 +22,25 @@ sim_data = h5_sim_data[:] # numpy array
 
 print("Done Loading!")
 
-n_z = 2
+dimensions = 5 # number of dimensions to expect from the simulation data -- make sure it matches the output dimension from multisim.py
+n_z = 2 # can play with this to see the performance change
+plot_axes = (3,3) # choose how to display the plots - there should be (1+dimensions) plots (first is to show the latent/saved variables)
 
 pca = PCA()
-X = pca.fit_transform(sim_data)
-X_clipped = np.zeros(X.shape)
-X_clipped[:, :n_z] = X[:, :n_z] # only copy the first n_z rows
+latent_vars = pca.fit_transform(sim_data)
+reduced_latent_vars = np.zeros(latent_vars.shape)
+reduced_latent_vars[:, :n_z] = latent_vars[:, :n_z] # only copy the first n_z rows
 
-reconstd = pca.inverse_transform(X_clipped)
-
-
-# this loss value is not right
-# pca_guesses = pca.inverse_transform(reconstd)
-# pca_loss = ((pca_guesses - sim_data.data[:])**2).sum(1).mean()
-# print("PCA gets a loss of %f" % pca_loss)
-# plt.plot(sim_data[:,:2])
-# plt.plot(reconstd[:,:2])
-# plt.show()
-
-
-dimensions = 5
-axes = (3,3)
-
+reconstructed = pca.inverse_transform(reduced_latent_vars)
 
 plt.subplot(*axes, 1)
 plt.title("Latent variable(s)")
-plt.plot(X_clipped[:,:n_z])
+plt.plot(reduced_latent_vars[:,:n_z])
 
 for i in range(dimensions):
-    plt.subplot(*axes, 2+i)
+    plt.subplot(*plot_axes, 2+i)
     plt.title("Particle %d" % (i+1))
     plt.plot(sim_data[:,i], label = ("Input %d"% (i+1)))
-    plt.plot(reconstd[:,i], label = ("Reconstruction %d" % (i+1)))
+    plt.plot(reconstructed[:,i], label = ("Reconstruction %d" % (i+1)))
     plt.legend()
 plt.show()
