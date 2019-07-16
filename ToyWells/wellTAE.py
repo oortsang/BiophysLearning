@@ -1,7 +1,12 @@
 # wellVAE.py - Oliver Tsang, July 2019
 #
-# Trains a Variational Autoencoder (VAE) to identify the axes of a BD simulation that contain more
+# Trains a Time-lagged Variational Autoencoder (TAE) to identify the axes of a BD simulation that contain more
 # signal than noise in relation to the others.
+#
+# This is time-lagged meaning we try to reconstruct a future configuration (meaning we are looking for the slowly changing variables)
+#
+#
+#
 #   Run this file as the main script (probably with "python3 wellVAE.py" or "python3 -i wellVAE.py")
 #
 #   Uses a network built with PyTorch: two parallel encoding networks -- one to store mean values
@@ -9,6 +14,7 @@
 # on how much it saves is the n_z variable (number of dimensions for latent variable z).
 #   There's a single decoding network that pulls from the probability distribution and tries to
 # recreate the original input.
+#
 #
 # This file comes with several functions to help visualize the predictions and see how well it's doing.
 #
@@ -34,15 +40,17 @@ from sklearn.decomposition import PCA
 ###  Initializing data set  ###
 
 # Can also load raw data or data pre-processed by PCA
-from loader import sim_data as sim_data # normalized dimensions
+# from loader import sim_data as sim_data # normalized dimensions
 # from loader import raw_sim_data as sim_data
 # from loader import pca_sim_data as sim_data
+from loader import tla_sim_data as sim_data
 
 print("... finished loading!")
 
 ###  Network Hyperparameters  ###
+time_lagged = True # should agree with whether tla_sim_data is imported as sim_data
 n_epochs = 20    # number of times to loop through the data set
-batch_size = 400 # batch size
+batch_size = 80 # batch size
     # Minibatching (computing the gradient from multiple examples) helps with performance and stability,
     # but using smaller batches seems to help get out of local minima faster.
 print("Batch size:", batch_size)
@@ -131,8 +139,10 @@ class VAE(nn.Module):
         # Can always change this in the __init__ function
         res = mu
         variational = True # False basically sets it to autoencoder status (but not quite b/c of the loss function)
-        if variational and self.training or self.always_random_sample:
-            eps_shape = (batch_size, n_z) if log_var.dim == 2 else n_z
+        # pdb.set_trace()
+        if (variational and self.training) or self.always_random_sample:
+            # eps_shape = (batch_size, n_z) if log_var.dim() == 2 else n_z
+            eps_shape = log_var.shape
             eps = torch.tensor(np.random.normal(0, 1, eps_shape), dtype=data_type)
             # eps contains a randomly pulled number for each example in the minibatch
             res += torch.exp(log_var*0.5) * eps # elementwise multiplication is desired
@@ -154,6 +164,10 @@ class VAE(nn.Module):
     # run through encoder, sampler, and decoder
     def forward(self, x):
         """Calls the other functions to run a batch/data set through the proper networks"""
+        # if we feed in too many dimensions, just take the first in_dim
+        # pdb.set_trace()
+        if x.dim() == 2 and x.shape[-1] != in_dim:
+            x = x[:, :in_dim]
         z_dist    = self.encode(x)        # 1. Encode
         z_sample  = self.sample(*z_dist)  # 2. Sample
         x_decoded = self.decode(z_sample) # 3. Decode
@@ -217,11 +231,13 @@ def trainer(model, optimizer, epoch, models, loss_array):
 
     # run through the mini batches!
     batch_count = 0 # Keep track of how many batches we've run through
-    for b_idx, data in enumerate(train_loader):
+    for b_idx, all_data in enumerate(train_loader):
         model.train() # set training mode
         optimizer.zero_grad()
-        recon = model(data)
-        loss  = model.vae_loss(recon, data)
+        train_data = all_data if not time_lagged else all_data[:,:in_dim]
+        goal_data  = all_data if not time_lagged else all_data[:,in_dim:]
+        recon = model(train_data)
+        loss  = model.vae_loss(recon, goal_data)
         loss_scalar = loss.item()
         rec_loss = model.rec_loss.item()/batch_size # reconstruction loss
         epoch_fail += rec_loss
@@ -245,17 +261,17 @@ if __name__ == "__main__":
     pass
 
 # Compare against a naive guess of averages
-naive = sim_data[-50000:].mean(0)
-naive_loss = ((naive - sim_data.data[:])**2).sum(1).mean()
+naive = sim_data[-50000:,:in_dim].mean(0)
+naive_loss = ((naive - sim_data.data[:,in_dim:])**2).sum(1).mean()
 print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
 
 # Compare against PCA
 pca_start = time.time()
 pca = PCA()
-pca_latent = pca.fit_transform(sim_data.data[:])
+pca_latent = pca.fit_transform(sim_data.data[:,:in_dim])
 pca_latent[:,n_z:] = 0
 pca_guesses = pca.inverse_transform(pca_latent)
-pca_loss = ((pca_guesses - sim_data.data[:])**2).sum(1).mean()
+pca_loss = ((pca_guesses - sim_data.data[:,in_dim:])**2).sum(1).mean()
 print("PCA gets a reconstruction loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
 
 # Finish initializing the model
