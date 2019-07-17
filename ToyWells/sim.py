@@ -13,7 +13,7 @@ from multipoly import MultiPolynomial
 
 # Brownian motion / taking random steps
 
-kB = 1.380649e-23 # units of J/K
+# kB = 1.380649e-23 # units of J/K
 class Particle():
     def __init__(self, Pot, pos = 0, DkT = 1, nsize = 1e-2):
         self.Pot = Pot           # potential well
@@ -72,8 +72,9 @@ SWell = MultiPolynomial([1,        0, -3, 0, 0])
 # CromWell next
 
 p1 = Particle(TWell, pos = np.array([0.5, -0.7]), nsize = 3, DkT = 0.1)
-p2 = Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 5e-1)
-p3 = Particle(SWell, pos = 0.1, nsize = 5, DkT = 0.1)
+p2 = Particle(2*DWell, nsize = 0.5, DkT = 0.5)
+p3 = Particle(MultiPolynomial([0.01, 0, -1]), pos = 0, nsize = 1)
+p2_copy = Particle(2*DWell, nsize = 0.5, DkT = 0.5)
 
 
 # xs = np.arange(-3, 3, 0.05)
@@ -82,26 +83,26 @@ p3 = Particle(SWell, pos = 0.1, nsize = 5, DkT = 0.1)
 # plt.plot(xs, SWell(xs))
 # plt.show()
 
-xs = np.arange(-2, 2, 0.05)
-Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))]).reshape((xs.shape[0], xs.shape[0], 2))
-xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
-outs = np.zeros(xxs.shape[0])
-for i in range(xxs.shape[0]):
-    outs[i] = TWell(xxs[i])
-outs = outs.reshape(Xs2d.shape[:2])
-outs = np.clip(outs, 0,5)
-plt.imshow(outs)
-# plt.imshow(QWell(Xs2d.flatten()).reshape(Xs2d.shape))
-plt.show()
+# xs = np.arange(-2, 2, 0.05)
+# Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))]).reshape((xs.shape[0], xs.shape[0], 2))
+# xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
+# outs = np.zeros(xxs.shape[0])
+# for i in range(xxs.shape[0]):
+#     outs[i] = TWell(xxs[i])
+# outs = outs.reshape(Xs2d.shape[:2])
+# outs = np.clip(outs, 0,5)
+# plt.imshow(outs)
+# plt.show()
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 4
+npart = 7
 particles = [p1, p2, p3,
-             Particle(2*DWell, nsize = 0.5, DkT = 0.5),                            # 4
-             Particle(MultiPolynomial([0.01, 0, -1]), pos = 0, nsize = 1),         # 5 # moves around a lot
+             Particle(SWell, pos = 0.1, nsize = 5, DkT = 0.1),                            # 4
+             Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 5e-1),
              Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
              Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
+
              Particle(DWell,                        pos = 0, nsize = 1e-1),        # 8
              Particle(MultiPolynomial([0.5, 1, -1]), pos = 0.2, nsize = 1e-1),     # 9
              Particle(MultiPolynomial([0.5, 1, 1]), pos = -0.3, nsize = 1e-1),     # 10
@@ -132,12 +133,10 @@ if True:
     h5file = h5py.File('data/SimOutput.h5', 'w')
     h5file.create_dataset('particle_tracks', data=tracks)
     h5file.close()
-
 # # To open:
 # h5file = h5py.File('data/SimOutput.h5', 'r')
 # b = h5file['particle_tracks'][:]
 # h5file.close()
-
 
 plt.plot(tracks)
 plt.show()

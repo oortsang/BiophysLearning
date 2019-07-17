@@ -87,31 +87,31 @@ class MultiPolynomial():
         return ret_string
 
 
-F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
-H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree
-J = MultiPolynomial([1,2,1]) # 1D Polynomial
+# F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
+# H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree
+# J = MultiPolynomial([1,2,1]) # 1D Polynomial
 
-print(H([-1,4,2])) # expect scalar
-G = F.grad()
-G0 = MultiPolynomial(G.coeffs[0])
-G1 = MultiPolynomial(G.coeffs[1])
-print(G([-1, 4])) # expect 2D vector
+# print(H([-1,4,2])) # expect scalar
+# G = F.grad()
+# G0 = MultiPolynomial(G.coeffs[0])
+# G1 = MultiPolynomial(G.coeffs[1])
+# print(G([-1, 4])) # expect 2D vector
 
 
-# G = MultiPolynomial([[[0,1],[1,1]], [[1,0],[0,1]]], return_vector = True)
-# G0 = MultiPolynomial([[0,1],[1,1]])
-# G1 = MultiPolynomial([[1,0],[0,1]])
+# # G = MultiPolynomial([[[0,1],[1,1]], [[1,0],[0,1]]], return_vector = True)
+# # G0 = MultiPolynomial([[0,1],[1,1]])
+# # G1 = MultiPolynomial([[1,0],[0,1]])
 
-print(G([1,2]))  # should give [4 3]
-print(G0([1,2])) # should get 4
-print(G1([1,2])) # should get 3
+# print(G([1,2]))  # should give [4 3]
+# print(G0([1,2])) # should get 4
+# print(G1([1,2])) # should get 3
 
-# scalar outputs working nicely
-print("Want 72       - ", F([2,3]))             # # 1 2D input  -> 1 1D output
-print("Want [72 296] - ", F([[2,3],[4,5]]))     # # 2 2D inputs -> 2 1D outputs
-print("Want 4        - ", H([1,1,1]))           # # 1 3D input  -> 1 1D output
-print("Want [4 0]    - ", H([[1,1,1],[0,0,0]])) # # 2 3D inputs -> 2 1D outputs
-print("Want 16       - ", J(3))                 # # 1 1/0D input-> 1 1D output
-print("Want 16       - ", J([3]))               # # 1 1D input  -> 1 1D output
-print("Want [16 25]  - ", J([[3],[4]]))         # # 2 1D inputs -> 2 1D outputs
-print("Want [16 25]  - ", J([3,4]))             # # 2 1D inputs -> 2 1D outputs
+# # scalar outputs working nicely
+# print("Want 72       - ", F([2,3]))             # # 1 2D input  -> 1 1D output
+# print("Want [72 296] - ", F([[2,3],[4,5]]))     # # 2 2D inputs -> 2 1D outputs
+# print("Want 4        - ", H([1,1,1]))           # # 1 3D input  -> 1 1D output
+# print("Want [4 0]    - ", H([[1,1,1],[0,0,0]])) # # 2 3D inputs -> 2 1D outputs
+# print("Want 16       - ", J(3))                 # # 1 1/0D input-> 1 1D output
+# print("Want 16       - ", J([3]))               # # 1 1D input  -> 1 1D output
+# print("Want [16 25]  - ", J([[3],[4]]))         # # 2 1D inputs -> 2 1D outputs
+# print("Want [16 25]  - ", J([3,4]))             # # 2 1D inputs -> 2 1D outputs

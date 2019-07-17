@@ -1,6 +1,6 @@
 # loader.py - Oliver Tsang, July 2019
 # This file is a helper file that takes care of loading
-# and cleaning the outputs of multisim.py
+# and cleaning the outputs of sim.py
 
 # Dependencies: NumPy, h5py, PyTorch, and Scikit-Learn
 
@@ -35,19 +35,35 @@ def normalize(dataset):
     clipped_data = dataset[500:, :] # smooth out the beginning
     for i in range(dataset.data.shape[1]):
         mu  = (clipped_data[:,i]).mean()
-        sig = (clipped_data[:,i]).std() # standard deviation 1 --> variance 1
-        norm_data[:,i] = (clipped_data[:,i]-mu)/sig
+        # sig = (clipped_data[:,i]).std() # standard deviation 1 --> variance 1
+        # norm_data[:,i] = (clipped_data[:,i] - mu) / sig
+        norm_data[:,i] = clipped_data[:,i] - mu
+    # import pdb; pdb.set_trace()
+    covar = np.cov(norm_data[:-dt,:].T)
+    u, s, vh = np.linalg.svd(covar)
+    covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
+    norm_data = norm_data @ covar_sqinv
+    norm_data = norm_data.astype(np.float32)
     return norm_data
 
-def time_lag(dataset, dt = 10000):
+dt = 100
+def time_lag(dataset):
     """Put the current coordinates followed by the coordinates dt steps in the future"""
-    start_cutoff = 500
-    mean_free_data = dataset.data[start_cutoff:]
+    start_cutoff = 1000
+    mean_free_data = dataset.data[start_cutoff:] # data that is mean-free, i.e., has mean 0
     data_shape = mean_free_data.shape
+
     # get rid of the means
     for i in range(data_shape[1]):
-        mu = mean_free_data[:,i].mean()
-        mean_free_data[:i] -= mu
+        mu = mean_free_data[:, i].mean()
+        mean_free_data[:, i] -= mu
+
+    # Whiten the data
+    covar = np.cov(mean_free_data[:-dt,:].T)
+    u, s, vh = np.linalg.svd(covar)
+    covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
+
+    mean_free_data = mean_free_data @ covar_sqinv
 
     lag_data = np.zeros((data_shape[0] - dt, 2 * data_shape[1]), dtype = np.float32)
     lag_data[:, : data_shape[1]] = mean_free_data[: -dt, :]
@@ -70,6 +86,7 @@ files = [(norfile, normalize),
          (pcafile, pcaify),
          (tlafile, time_lag)]
 
+force_recompute = True
 for file_name, fxn in files:
     needs_recompute = False
     if os.path.isfile(file_name):
@@ -77,7 +94,7 @@ for file_name, fxn in files:
             needs_recompute = True
     else:
         needs_recompute = True
-    if needs_recompute:
+    if needs_recompute or force_recompute:
         print("Creating/updating", file_name)
         new_data = fxn(raw_sim_data)
         # save the data
@@ -85,29 +102,9 @@ for file_name, fxn in files:
         h5file.create_dataset('particle_tracks', data = new_data)
         h5file.close()
 
-# if os.path.getmtime(rawfile) > os.path.getmtime(norfile):
-#     # if the raw file is more recent than the normalized file, redo it
-#     print("Normalizing the simulation data...")
-#     raw_sim_data = MyData(rawfile)
-#     normalized_data = normalize(raw_sim_data)
-
-#     h5file = h5.File(norfile, 'w')
-#     h5file.create_dataset('', data=normalized_data)
-#     h5file.close()
-
-# if os.path.getmtime(rawfile) > os.path.getmtime(pcafile):
-#     # if the pca file is more recent than the normalized file, redo it
-#     print("Normalizing the simulation data...")
-#     raw_sim_data = MyData(rawfile)
-#     pca_data = pcaify(raw_sim_data)
-
-#     h5file = h5.File(pcafile, 'w')
-#     h5file.create_dataset('particle_tracks', data=pca_data)
-#     h5file.close()
-
 # Accessible from other files by "from loader import *_data"
 
 # raw_sim_data = MyData(rawfile) # already loaded
-sim_data = MyData(norfile)
+nor_sim_data = MyData(norfile)
 pca_sim_data = MyData(pcafile)
 tla_sim_data = MyData(tlafile)
