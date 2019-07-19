@@ -35,10 +35,10 @@ def normalize(dataset):
     clipped_data = dataset[500:, :] # smooth out the beginning
     for i in range(dataset.data.shape[1]):
         mu  = (clipped_data[:,i]).mean()
+        norm_data[:,i] = clipped_data[:,i] - mu
         # sig = (clipped_data[:,i]).std() # standard deviation 1 --> variance 1
         # norm_data[:,i] = (clipped_data[:,i] - mu) / sig
-        norm_data[:,i] = clipped_data[:,i] - mu
-    # import pdb; pdb.set_trace()
+
     covar = np.cov(norm_data[:-dt,:].T)
     u, s, vh = np.linalg.svd(covar)
     covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
@@ -46,7 +46,7 @@ def normalize(dataset):
     norm_data = norm_data.astype(np.float32)
     return norm_data
 
-dt = 100
+dt = 50
 def time_lag(dataset):
     """Put the current coordinates followed by the coordinates dt steps in the future"""
     start_cutoff = 1000
@@ -63,7 +63,7 @@ def time_lag(dataset):
     u, s, vh = np.linalg.svd(covar)
     covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
 
-    mean_free_data = mean_free_data @ covar_sqinv
+    mean_free_data = mean_free_data @ covar_sqinv.T
 
     lag_data = np.zeros((data_shape[0] - dt, 2 * data_shape[1]), dtype = np.float32)
     lag_data[:, : data_shape[1]] = mean_free_data[: -dt, :]

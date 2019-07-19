@@ -49,6 +49,7 @@ data_type = torch.float
 
 ###  Network Hyperparameters  ###
 time_lagged = False
+variational = True
 
 if time_lagged:
     sim_data = tla_sim_data
@@ -56,7 +57,7 @@ else:
     sim_data = nor_sim_data
 
 n_epochs = 30
-batch_size = 160
+batch_size = 100
 
 # Network dimensions
 # in_dim = 8 # input dimension
@@ -64,32 +65,31 @@ in_dim = sim_data.data[:].shape[1]
 if time_lagged:
     in_dim //= 2
 
-hsize  = 6 # size of hidden layers -- don't have to all be the same size though!
-n_z    = 2 # dimensionality of latent space
+hsize  = in_dim+1 # size of hidden layers -- don't have to all be the same size though!
+n_z    = 1 # dimensionality of latent space
 
 # the layers themselves
-encode_layers_means = [nn.Linear(in_dim, hsize),
-                       nn.ReLU(),
-                       nn.Linear(hsize, n_z),
-                       nn.ReLU(),
-                       nn.Linear(n_z, n_z) # just linear combination without activation
+encode_layers_means = [nn.Linear(in_dim, n_z),
+                       # nn.ReLU(),
+                       # nn.Linear(hsize, n_z),
+                       # nn.ReLU(),
+                       # nn.Linear(hsize, n_z) # just linear combination without activation
                       ]
 encode_layers_vars  = [nn.Linear(in_dim, hsize),
                        nn.ReLU(),
-                       nn.Linear(hsize, n_z),
-                       nn.ReLU(),
-                       nn.Linear(n_z, n_z)
+                       # nn.Linear(hsize, n_z),
+                       # nn.ReLU(),
+                       nn.Linear(hsize, n_z)
                       ]
 decode_layers       = [nn.Linear(n_z, hsize),
                        nn.ReLU(),
-                       nn.Linear(hsize, hsize),
-                       nn.ReLU(),
-                       nn.Linear(hsize, hsize),
-                       nn.ReLU(),
+                       # nn.Tanh(),
+                       # nn.Linear(hsize, hsize),
+                       # nn.ReLU(),
+                       # nn.Linear(hsize, hsize),
+                       # nn.ReLU(),
                        nn.Linear(hsize,in_dim)
                       ]
-
-
 
 ## Learning Algorithm Hyperparameters
 optim_fn = optim.Adam
@@ -97,13 +97,13 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 1e-2           # learning rate
-weight_decay = 1e-4 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+lr = 5e-3           # learning rate
+weight_decay = 1e-3 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-4     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 
-kl_lambda = 1 # How much weight to give to the KL-Divergence term in loss?
-    # Setting to 0 makes the VAE cloesr to a standard autoencoder and makes the probability distributions less smooth.
+kl_lambda = 1       # How much weight to give to the KL-Divergence term in loss?
+    # Setting to 0 makes the VAE closer to a standard autoencoder and makes the probability distributions less smooth.
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     else:
         naive_loss = ((naive - sim_data.data)**2).sum(1).mean()
     print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
-    
+
     # Compare against PCA
     pca_start = time.time()
     pca = PCA()
@@ -188,16 +188,26 @@ if __name__ == "__main__":
         pca_loss = ((pca_guesses - sim_data.data[:])**2).sum(1).mean()
     print("PCA gets a reconstruction loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
 
+# Prepare for visualization
+inputs = sim_data.data[:,:in_dim]
+H, x_edges, y_edges = np.histogram2d(inputs[:,0], inputs[:,1], bins = 30)
+x_pts = 0.5 * (x_edges[:-1]+x_edges[1:])
+y_pts = 0.5 * (y_edges[:-1]+y_edges[1:])
+grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
+grid = torch.tensor(grid, dtype = data_type)
+# can imshow H or run grid through vae_model.just_encode(grid)[0]
+
 # Initialize the model
 vae_model = VAE(in_dim              = in_dim,
                 n_z                 = n_z,
                 encode_layers_means = encode_layers_means,
                 encode_layers_vars  = encode_layers_vars,
                 decode_layers       = decode_layers,
-                variational         = True,
+                variational         = variational,
                 kl_lambda           = kl_lambda,
                 data_type           = data_type,
                 pref_dataset        = sim_data.data[:])
+
 
 # set the learning function
 if optim_fn == optim.SGD:

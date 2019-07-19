@@ -73,11 +73,13 @@ class VAE(nn.Module):
             self.decode_net       = self.decode_net.double()
 
     def encode(self, x):
-        """Encoding from x (input) to z (latent). 
+        """Encoding from x (input) to z (latent).
         Returns the probability distribution in terms of mean and log-variance of a gaussian"""
+        # saves mu and log_var to compute the loss
+        # saves x for debugging convenience
         self.x = x
-        self.mu     = self.encode_net_means(x)
-        self.log_var = self.encode_net_vars(x)
+        self.mu      = self.encode_net_means(x) # simple mean
+        self.log_var = self.encode_net_vars(x)  # guess the log-variance for numerical stability
         self.z = (self.mu, self.log_var)
         return self.z
 
@@ -139,9 +141,19 @@ class VAE(nn.Module):
 
         # Equation from https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
         # but probably in some paper (2-3 lines from Doersch + diagonal covariance matrix assn.)
-        kl_div   = 0.5 * torch.sum(self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var))
+        kl_div = 0
+        if self.variational:
+            kl_div   = 0.5 * torch.sum(self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var))
         return (self.rec_loss + self.kl_lambda*kl_div) / pred.shape[0]
 
+    def just_encode(self, x):
+        """Runs data through just the encoder"""
+        # if we feed in too many dimensions, just take the first self.in_dim
+        if x.dim() == 2 and x.shape[-1] != self.in_dim:
+            x = x[:, :self.in_dim]
+        z_dist = self.encode(x)
+        return z_dist[0].detach().numpy() # returns just the means
+        
     def run_data(self, data=None):
         """Runs the whole dataset through the network"""
         if data is None:
@@ -153,8 +165,11 @@ class VAE(nn.Module):
         recon = self(data).detach().numpy()
         return recon
 
-    def plot_test(self, data=None, plot = True, axes=(3,3), ret = False, dt = 0):
+    def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0):
         """Plots the predictions of the model and its latent variables"""
+        if axes[0] is None:
+            axes = (1+self.in_dim, axes[1])
+
         if data is None:
             if self.pref_dataset is None:
                 return None
@@ -177,3 +192,49 @@ class VAE(nn.Module):
             plt.show()
         if ret:
             return outputs, latents
+
+    def contour_plot2d(self, data=None, mode='reconstruction', bins = 30):
+        """Note that this is only designed for 2D spaces
+
+        Arguments:
+            values: Nx2 array holding a sequence of coordinates
+            bins:   number of bins to use when calling the histogram
+        """
+        # Load the proper data set
+        if data is None:
+            if self.pref_dataset is None:
+                return None
+            data = self.pref_dataset
+
+        # construct a mesh and histogram from the particle's distribution in space
+        H, x_edges, y_edges = np.histogram2d(data[:,0], data[:,1], bins = bins)
+        x_pts = 0.5 * (x_edges[:-1] + x_edges[1:])
+        y_pts = 0.5 * (y_edges[:-1] + y_edges[1:])
+        grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
+        grid = torch.tensor(grid, dtype = self.data_type)
+
+        # plot the requested features
+        if mode == 'reconstruction' or mode == 'r':
+            # attempts to reconstruct the original data
+            rec_points = self(torch.tensor(data, dtype=self.data_type)).detach().numpy()
+            H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
+            plt.imshow(H_rec)
+            plt.show()
+        elif mode == 'grid rep' or mode == 'g':
+            # shows the projection of the space onto the latent space
+            rec_points = self(torch.tensor(grid, dtype=self.data_type)).detach().numpy()
+            H_grid, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
+            plt.imshow(H_grid)
+            plt.show()
+        elif mode == 'latent' or mode == 'l':
+            latents = self.just_encode(torch.tensor(grid, dtype=self.data_type)) # get the mean score for each point on the grid
+            plt.imshow(latents.reshape(bins,bins))
+            plt.show()
+        elif mode == 'latent dist' or mode == 'd':
+            latents = self.just_encode(torch.tensor(grid, dtype=self.data_type)) # get the mean score for each point on the grid
+            Hlat, _ = np.histogram(latents, bins=bins)
+            plt.plot(latents)
+            plt.show()
+        else: # otherwise just plot the potential well
+            plt.imshow(H)
+            plt.show()
