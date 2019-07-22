@@ -193,7 +193,7 @@ class VAE(nn.Module):
         if ret:
             return outputs, latents
 
-    def contour_plot2d(self, data=None, mode='reconstruction', bins = 30):
+    def contour_plot2d(self, mode='reconstruction', data=None, bins = 30):
         """Note that this is only designed for 2D spaces
 
         Arguments:
@@ -213,28 +213,47 @@ class VAE(nn.Module):
         grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
         grid = torch.tensor(grid, dtype = self.data_type)
 
-        # plot the requested features
-        if mode == 'reconstruction' or mode == 'r':
-            # attempts to reconstruct the original data
-            rec_points = self(torch.tensor(data, dtype=self.data_type)).detach().numpy()
-            H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
-            plt.imshow(H_rec)
-            plt.show()
-        elif mode == 'grid rep' or mode == 'g':
-            # shows the projection of the space onto the latent space
-            rec_points = self(torch.tensor(grid, dtype=self.data_type)).detach().numpy()
-            H_grid, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
-            plt.imshow(H_grid)
-            plt.show()
-        elif mode == 'latent' or mode == 'l':
-            latents = self.just_encode(torch.tensor(grid, dtype=self.data_type)) # get the mean score for each point on the grid
-            plt.imshow(latents.reshape(bins,bins))
-            plt.show()
-        elif mode == 'latent dist' or mode == 'd':
+
+        if mode == 'latent dist' or mode == 'd':
             latents = self.just_encode(torch.tensor(grid, dtype=self.data_type)) # get the mean score for each point on the grid
             Hlat, _ = np.histogram(latents, bins=bins)
             plt.plot(latents)
             plt.show()
-        else: # otherwise just plot the potential well
-            plt.imshow(H)
+        else:
+            plt.imshow(H, cmap = 'jet', alpha = 0.7)
+            pic = np.zeros((*H.shape, 4))
+            overlay_color = np.array((1,0.56, 0, 0))*0.65
+            # overlay_color = np.array((0,0,0,0.0))
+            opacity = 0.7
+
+            # plot the requested features
+            if mode == 'reconstruction' or mode == 'r':
+                # attempts to reconstruct the original data
+                rec_points = self(torch.tensor(data, dtype=self.data_type)).clone().detach().numpy()
+                H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
+                H_rec -= H_rec.min()
+                H_rec /= H_rec.max()
+                pic = H_rec[..., np.newaxis] * overlay_color
+                vis = H_rec != 0
+                pic[vis, 3] = opacity
+
+            elif mode == 'grid rep' or mode == 'g':
+                # shows the projection of the space onto the latent space
+                grid_points = self(torch.tensor(grid, dtype=self.data_type)).clone().detach().numpy()
+                H_grid, _, _ = np.histogram2d(grid_points[:,0], grid_points[:,1], bins=(x_edges,y_edges))
+                H_grid -= H_grid.min()
+                H_grid /= H_grid.max()
+                pic = H_grid[..., np.newaxis] * overlay_color
+                vis = H_grid != 0
+                pic[vis, 3] = opacity
+
+            elif mode == 'latent' or mode == 'l':
+                # get the mean score for each point on the grid
+                latents = self.just_encode(torch.tensor(grid, dtype=self.data_type)).reshape(bins, bins)
+                latents -= latents.min()
+                latents /= latents.min()
+                pic = latents[..., np.newaxis] * overlay_color
+                invis = latents != 0
+                pic[vis, 3] = 0
+            plt.imshow(pic)
             plt.show()

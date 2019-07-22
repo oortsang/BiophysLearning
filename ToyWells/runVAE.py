@@ -48,7 +48,7 @@ print("... finished loading!")
 data_type = torch.float
 
 ###  Network Hyperparameters  ###
-time_lagged = False
+time_lagged = True
 variational = True
 
 if time_lagged:
@@ -65,30 +65,28 @@ in_dim = sim_data.data[:].shape[1]
 if time_lagged:
     in_dim //= 2
 
-hsize  = in_dim+1 # size of hidden layers -- don't have to all be the same size though!
+h_size  = in_dim+1 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
 
 # the layers themselves
 encode_layers_means = [nn.Linear(in_dim, n_z),
                        # nn.ReLU(),
-                       # nn.Linear(hsize, n_z),
+                       # nn.Linear(h_size, n_z),
                        # nn.ReLU(),
-                       # nn.Linear(hsize, n_z) # just linear combination without activation
+                       # nn.Linear(h_size, n_z)
+                       # just linear combination without activation
                       ]
-encode_layers_vars  = [nn.Linear(in_dim, hsize),
+encode_layers_vars  = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
-                       # nn.Linear(hsize, n_z),
+                       nn.Linear(h_size, n_z),
                        # nn.ReLU(),
-                       nn.Linear(hsize, n_z)
+                       # nn.Linear(h_size, n_z)
                       ]
-decode_layers       = [nn.Linear(n_z, hsize),
+decode_layers       = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
-                       # nn.Tanh(),
-                       # nn.Linear(hsize, hsize),
+                       # nn.Linear(h_size, h_size),
                        # nn.ReLU(),
-                       # nn.Linear(hsize, hsize),
-                       # nn.ReLU(),
-                       nn.Linear(hsize,in_dim)
+                       nn.Linear(h_size,in_dim)
                       ]
 
 ## Learning Algorithm Hyperparameters
@@ -170,23 +168,24 @@ if __name__ == "__main__":
     # pass
     # Compare against a naive guess of averages
     naive = sim_data[-50000:,:in_dim].mean(0)
-    if time_lagged:
-        naive_loss = ((naive - sim_data.data[:,in_dim:])**2).sum(1).mean()
-    else:
-        naive_loss = ((naive - sim_data.data)**2).sum(1).mean()
+    naive_loss = ((naive - sim_data.data[:,-in_dim:])**2).sum(1).mean()
     print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
-
+    
     # Compare against PCA
     pca_start = time.time()
     pca = PCA()
     pca_latent = pca.fit_transform(sim_data.data[:,:in_dim])
     pca_latent[:,n_z:] = 0
     pca_guesses = pca.inverse_transform(pca_latent)
-    if time_lagged:
-        pca_loss = ((pca_guesses - sim_data.data[:,in_dim:])**2).sum(1).mean()
-    else:
-        pca_loss = ((pca_guesses - sim_data.data[:])**2).sum(1).mean()
+    pca_loss = ((pca_guesses - sim_data.data[:,-in_dim:])**2).sum(1).mean()
     print("PCA gets a reconstruction loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
+
+    # Compare against the desired result
+    desired = np.zeros((sim_data.data.shape[0], in_dim))
+    desired[:,0] = sim_data.data[:,0]
+    desired[:,1] = sim_data.data[:,1].mean()
+    des_loss = ((desired - sim_data.data[:,-in_dim:])**2).sum(1).mean()
+    print("Considering just the double well axis gives a loss of", pca_loss)
 
 # Prepare for visualization
 inputs = sim_data.data[:,:in_dim]
@@ -208,7 +207,6 @@ vae_model = VAE(in_dim              = in_dim,
                 data_type           = data_type,
                 pref_dataset        = sim_data.data[:])
 
-
 # set the learning function
 if optim_fn == optim.SGD:
     optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = momentum)
@@ -222,7 +220,11 @@ start_time = time.time() # Keep track of run time
 
 # Now actually do the training
 for epoch in range(n_epochs):
+    # if epoch == 2:
+    #     import pdb
+    #     pdb.set_trace()
     trainer(vae_model, optimizer, epoch, models, loss_array)
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
+    # vae_model.contour_plot2d(mode = 'r')
     # validate(epoch) # to tell you how it's doing on the test set
