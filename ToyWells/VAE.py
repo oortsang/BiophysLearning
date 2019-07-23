@@ -213,16 +213,35 @@ class VAE(nn.Module):
         grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
         grid = torch.tensor(grid, dtype = self.data_type)
 
-
+        overlay_color = np.array((1,0.56, 0, 0))*0.65
+        
         if mode == 'latent dist' or mode == 'd':
-            latents = self.just_encode(torch.tensor(grid, dtype=self.data_type)) # get the mean score for each point on the grid
-            Hlat, _ = np.histogram(latents, bins=bins)
-            plt.plot(latents)
+            # plot the distribution of latent variables in latent space
+            latents = self.just_encode(torch.tensor(data, dtype=self.data_type)).flatten() # get the mean score for each point on the grid
+            Hlat, xedges = np.histogram(latents, bins=bins)
+            xpts = 0.5*(xedges[1:] + xedges[:-1])
+            plt.plot(xpts, Hlat)
+            plt.show()
+        elif mode == 'latent potential well' or mode == 'w':
+            # plot potential well in latent space
+            latents = self.just_encode(torch.tensor(data, dtype=self.data_type)).flatten() # get the mean score for each point on the grid
+            Hlat, xedges = np.histogram(latents, bins=bins)
+            xpts = 0.5*(xedges[1:] + xedges[:-1])
+            plt.plot(xpts, -np.log(Hlat+0.001)) # put a little cushion in case of a 0
+            plt.show()
+        elif mode == 'latent val' or mode == 'l':
+            # get the mean score for each point on the grid
+            latents = self.just_encode(grid).reshape(bins, bins)
+            latents -= latents.min()
+            latents /= latents.max()
+            pic = latents[..., np.newaxis] * overlay_color *2
+            pic[..., 3] = 1
+            plt.imshow(pic)
             plt.show()
         else:
+            # initialize background image
             plt.imshow(H, cmap = 'jet', alpha = 0.7)
             pic = np.zeros((*H.shape, 4))
-            overlay_color = np.array((1,0.56, 0, 0))*0.65
             # overlay_color = np.array((0,0,0,0.0))
             opacity = 0.7
 
@@ -239,21 +258,12 @@ class VAE(nn.Module):
 
             elif mode == 'grid rep' or mode == 'g':
                 # shows the projection of the space onto the latent space
-                grid_points = self(torch.tensor(grid, dtype=self.data_type)).clone().detach().numpy()
+                grid_points = self(grid).clone().detach().numpy()
                 H_grid, _, _ = np.histogram2d(grid_points[:,0], grid_points[:,1], bins=(x_edges,y_edges))
                 H_grid -= H_grid.min()
                 H_grid /= H_grid.max()
                 pic = H_grid[..., np.newaxis] * overlay_color
                 vis = H_grid != 0
                 pic[vis, 3] = opacity
-
-            elif mode == 'latent' or mode == 'l':
-                # get the mean score for each point on the grid
-                latents = self.just_encode(torch.tensor(grid, dtype=self.data_type)).reshape(bins, bins)
-                latents -= latents.min()
-                latents /= latents.min()
-                pic = latents[..., np.newaxis] * overlay_color
-                invis = latents != 0
-                pic[vis, 3] = 0
             plt.imshow(pic)
             plt.show()

@@ -13,7 +13,8 @@ from multipoly import MultiPolynomial
 
 # Brownian motion / taking random steps
 
-# kB = 1.380649e-23 # units of J/K
+kB = 1.380649e-23 # units of J/K
+
 class Particle():
     def __init__(self, Pot, pos = 0, DkT = 1, nsize = 1e-2, nsig = 1):
         self.Pot = Pot           # potential well
@@ -43,23 +44,23 @@ class Particle():
 
 # QuadWell = MultiPolynomial([[1,0,-6,0,0],[1,-0.5,-1,1,0]]) # 2 dimensions!
 
-TriCoeffs = np.array([ [0, 0, 0, 0, 0, 0,   1],   # x^6
-                       [0, 0, 0, 0, 0, 0, 0.2],     # x^5
-                       [0,0,0,0,3, 0.02, -0.46],      # x^4
-                       [0,0,0,0,0.4, 0.12, -1.762],     # x^3
-                       [0,0,3,0.4,0.04, -0.726, -0.1395], # x^2
-                       [0,0,0.2,0.12,5.118, 0.292, 0.405],  # x^1
-                       [1, 0.2, .5, .314, .2565, .114, .7565] # x^0
-                     ])
-QCoeffs = np.zeros((5,5))
-QCoeffs[4,4] = -1
-QCoeffs[4,2] = 1
-QCoeffs[2,4] = 1
-QCoeffs[2,2] = -1
+# TriCoeffs = np.array([ [0, 0, 0, 0, 0, 0,   1],   # x^6
+#                        [0, 0, 0, 0, 0, 0, 0.2],     # x^5
+#                        [0,0,0,0,3, 0.02, -0.46],      # x^4
+#                        [0,0,0,0,0.4, 0.12, -1.762],     # x^3
+#                        [0,0,3,0.4,0.04, -0.726, -0.1395], # x^2
+#                        [0,0,0.2,0.12,5.118, 0.292, 0.405],  # x^1
+#                        [1, 0.2, .5, .314, .2565, .114, .7565] # x^0
+#                      ])
+# QCoeffs = np.zeros((5,5))
+# QCoeffs[4,4] = -1
+# QCoeffs[4,2] = 1
+# QCoeffs[2,4] = 1
+# QCoeffs[2,2] = -1
 
 
-TWell = MultiPolynomial(TriCoeffs)
-QWell = MultiPolynomial(QCoeffs)
+# TWell = MultiPolynomial(TriCoeffs)
+# QWell = MultiPolynomial(QCoeffs)
 # CromWell next
 
 # xs = np.arange(-2, 2, 0.05)
@@ -74,52 +75,36 @@ QWell = MultiPolynomial(QCoeffs)
 # plt.show()
 
 
+# WWell = MultiPolynomial([            0.5, 0, 0]) # wide
+# DWell = 5e-2*MultiPolynomial([5,   0, -1, 0,  0]) # double
+# SWell = MultiPolynomial([1,        0, -3, 0,  0]) # shallow?
 
-WWell = MultiPolynomial([            0.5, 0, 0]) # wide
+# OldNWell = MultiPolynomial([5,0, -0.1, 0, 0])
+
 HWell = MultiPolynomial([             2, 0,  0]) # harmonic
-DWell = 5e-2*MultiPolynomial([5,   0, -1, 0,  0]) # double
-SWell = MultiPolynomial([1,        0, -3, 0,  0]) # shallow?
-# NWell = MultiPolynomial([15, 0, -1, 0, -0.1, 0, 0])
-# NWell = MultiPolynomial([5,0, -0.1, 0, 0])
-OldNWell = MultiPolynomial([5,0, -0.1, 0, 0])
 NWell = MultiPolynomial([80,0, -0.5, 0, 0]) # narrow (double) well
 
-xs = np.arange(-0.1, 0.1, 0.01)
-# plt.plot(xs, DWell(xs))
-# plt.plot(xs, NWell(xs))
-# plt.plot(xs, HWell(xs))
-# plt.plot(xs, WWell(xs))
-# # plt.plot(xs, DeepWells(xs))
-# # plt.plot(xs, HWell(xs))
-# plt.show()
+xs = np.arange(-0.15, 0.15, 0.005)
+plt.plot(xs, NWell(xs))
+plt.plot(xs, HWell(xs))
+plt.show()
 
 
-# p1 = Particle(TWell, pos = np.array([0.5, -0.7]), nsize = 3, DkT = 0.1)
-p2 = Particle(NWell, nsize = 0.9, DkT = 3.5, nsig = 1.5, pos = 0)
-p3 = Particle(NWell, nsize = 0.5, DkT = 1, nsig = 3)
-# p4 = Particle(NWell, nsize = 0.1, DkT = 1, nsig = 10)
+p1 = Particle(NWell, nsize = 0.9, DkT = 3.5, nsig = 1.5, pos = 0)
 
-ph1 = Particle(HWell, nsize = 0.1, DkT = 1, nsig = 6)
-ph2 = Particle(WWell, nsize = 0.5, DkT = 2, nsig = 2)
+p2 = Particle(HWell, nsize = 0.1, DkT = 1, nsig = 6)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
 npart = 2
-particles = [p2, ph1, p3, ph2,
-             Particle(0.5*SWell, pos = 0.1, nsize = 5, DkT = 0.1),                 # 4
-             Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 5e-1),       # 5
-             Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
-             Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
-
-             Particle(DWell,                        pos = 0, nsize = 1e-1),        # 8
-             Particle(MultiPolynomial([0.5, 1, -1]), pos = 0.2, nsize = 1e-1),     # 9
-             Particle(MultiPolynomial([0.5, 1, 1]), pos = -0.3, nsize = 1e-1),     # 10
-             Particle(MultiPolynomial([0.7, 1, 1]), nsize = 1e-1, DkT = 1e-4),     # 11
-             Particle(MultiPolynomial([0.5, 1, 1]), pos = 0, nsize = 1, DkT = 10), # 12
-             Particle(MultiPolynomial([3, 1, 1]), pos = 0, nsize = 1),             # 13
-             Particle(MultiPolynomial([10, -10, -1]), pos = 0, nsize = 1),         # 14
-             Particle(MultiPolynomial([0.5, 1, 1]), pos = -0.1, nsize = 1),        # 15
-             # Particle(MultiPolynomial([0.5, 1, -1]), pos = 0.5, nsize = 1)       # 16
+particles = [p1,
+             p2,
+             # p3,
+             # ph2,
+             # Particle(0.5*SWell, pos = 0.1, nsize = 5, DkT = 0.1),                 # 4
+             # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 5e-1),       # 5
+             # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
+             # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
 tstep = 2e-3
 # nsteps = 105000

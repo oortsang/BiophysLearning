@@ -86,7 +86,7 @@ files = [(norfile, normalize),
          (pcafile, pcaify),
          (tlafile, time_lag)]
 
-force_recompute = True
+force_recompute = False
 for file_name, fxn in files:
     needs_recompute = False
     if os.path.isfile(file_name):

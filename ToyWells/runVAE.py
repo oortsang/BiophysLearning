@@ -26,6 +26,7 @@
 #
 # Dependencies: NumPy, Matplotlib, PyTorch, Scikit-Learn, and h5py (through loader.py)
 
+
 print("Loading...")
 import numpy as np
 import torch
@@ -65,13 +66,11 @@ in_dim = sim_data.data[:].shape[1]
 if time_lagged:
     in_dim //= 2
 
-h_size  = in_dim+1 # size of hidden layers -- don't have to all be the same size though!
+h_size = in_dim+1 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
 
 # the layers themselves
 encode_layers_means = [nn.Linear(in_dim, n_z),
-                       # nn.ReLU(),
-                       # nn.Linear(h_size, n_z),
                        # nn.ReLU(),
                        # nn.Linear(h_size, n_z)
                        # just linear combination without activation
@@ -79,13 +78,9 @@ encode_layers_means = [nn.Linear(in_dim, n_z),
 encode_layers_vars  = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
                        nn.Linear(h_size, n_z),
-                       # nn.ReLU(),
-                       # nn.Linear(h_size, n_z)
                       ]
 decode_layers       = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
                        nn.Linear(h_size,in_dim)
                       ]
 
@@ -96,12 +91,11 @@ optim_fn = optim.Adam
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
 lr = 5e-3           # learning rate
-weight_decay = 1e-3 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+weight_decay = 4e-4 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
-momentum = 1e-4     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
+momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 
-kl_lambda = 1       # How much weight to give to the KL-Divergence term in loss?
-    # Setting to 0 makes the VAE closer to a standard autoencoder and makes the probability distributions less smooth.
+kl_lambda = 0.1     # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
