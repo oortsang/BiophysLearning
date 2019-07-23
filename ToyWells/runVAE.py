@@ -49,7 +49,7 @@ print("... finished loading!")
 data_type = torch.float
 
 ###  Network Hyperparameters  ###
-time_lagged = True
+time_lagged = False
 variational = True
 
 if time_lagged:

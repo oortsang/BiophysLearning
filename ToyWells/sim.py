@@ -102,7 +102,9 @@ class Particle():
 # OldNWell = MultiPolynomial([5,0, -0.1, 0, 0])
 # NewOldNWell = MultiPolynomial([80,0, -0.5, 0, 0]) # narrow (double) well
 
-a = np.array(1e26, dtype=np.double)
+
+a = np.array(1e25, dtype=np.double)
+# import pdb; pdb.set_trace()
 HWell = a*MultiPolynomial([        1, 0, 0]) # harmonic
 NWell = 1e22*MultiPolynomial([8,  0, -300, 0, 0]) # narrow (double) well
 
@@ -117,9 +119,9 @@ p2 = Particle(HWell, D = 1e-4, nsize = 1)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 1
-particles = [p2,
-             p1,
+npart = 2
+particles = [p1,
+             p2,
              # p3,
              # ph2,
              # Particle(0.5*SWell, pos = 0.1, nsize = 5, DkT = 0.1),                 # 4
@@ -127,8 +129,8 @@ particles = [p2,
              # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
              # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
-nsteps = 105000
-# nsteps = 205000
+# nsteps = 105000
+nsteps = 505000
 dimensions = 0
 for i in range(npart):
     dimensions += particles[i].dim
