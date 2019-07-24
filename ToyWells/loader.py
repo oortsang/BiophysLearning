@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 
 start_cutoff = 0 # where the data begin 
 dt = 50 # time lag in frames
-force_recompute = True # recompute the transformations even if there isn't a new simulation?
+force_recompute = False # recompute the transformations even if there isn't a new simulation?
 
 # Class to hold the data we load
 class MyData(data.TensorDataset):
