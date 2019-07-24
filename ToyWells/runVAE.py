@@ -33,6 +33,7 @@ import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
+from torch.utils.data import Subset
 import matplotlib.pyplot as plt
 import time
 from sklearn.decomposition import PCA
@@ -43,19 +44,22 @@ from loader import nor_sim_data # normalized dimensions
 from loader import raw_sim_data
 from loader import pca_sim_data
 from loader import tla_sim_data
+from loader import con_sim_data
 from loader import dt           # time lag used in dt
 print("... finished loading!")
 
 data_type = torch.float
+threads = 4 # number of threads to use to train
+model_param_fname = "data/model_parameters"
 
 ###  Network Hyperparameters  ###
-time_lagged = False
+time_lagged = True
 variational = True
 
 if time_lagged:
     sim_data = tla_sim_data
 else:
-    sim_data = nor_sim_data
+    sim_data = con_sim_data
 
 n_epochs = 30
 batch_size = 100
@@ -70,9 +74,9 @@ h_size = in_dim+1 # size of hidden layers -- don't have to all be the same size 
 n_z    = 1 # dimensionality of latent space
 
 # the layers themselves
-encode_layers_means = [nn.Linear(in_dim, n_z),
-                       # nn.ReLU(),
-                       # nn.Linear(h_size, n_z)
+encode_layers_means = [nn.Linear(in_dim, h_size),
+                       nn.ReLU(),
+                       nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
 encode_layers_vars  = [nn.Linear(in_dim, h_size),
@@ -91,7 +95,7 @@ optim_fn = optim.Adam
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
 lr = 5e-3           # learning rate
-weight_decay = 4e-4 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+weight_decay = 1e-4 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 
@@ -99,11 +103,39 @@ kl_lambda = 0.1     # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
+# Finish preparing data
+train_amt = 0.8 # fraction of samples used as training
+val_amt   = 0.1 # fractions of samples used as validation
+test_amt  = 1 - train_amt - val_amt
+
 # DataLoaders to help with minibatching
 # Note that num_workers runs the load in parallel
-train_loader = DataLoader(sim_data, batch_size = batch_size, shuffle = True, num_workers = 4)
-test_loader = DataLoader(sim_data, batch_size = 400, shuffle = False, num_workers = 4)
+if (train_amt == 1):
+    train_loader = DataLoader(sim_data, batch_size = batch_size, shuffle = True, num_workers = threads)
+    val_set = None
+    test_set = None
+else:
+    delay = 0
+    tot_size = len(sim_data)
+    if time_lagged:
+        delay = 5 * dt
+        tot_size -= 2 * delay # wait between sets to decrease correlation
 
+    # Scale fractions to number of examples
+    train_size = int(tot_size * train_amt)
+    train_size -= train_size % threads
+    val_size   = int(tot_size * test_amt)
+    test_size  = tot_size - (train_size + val_size)
+
+    # Find indices
+    val_start  = train_size + delay
+    test_start = val_start+val_size + delay
+
+    # Make the sets and training loader
+    train_set  = sim_data.get_slice(0, train_size)
+    val_set    = sim_data.get_slice(val_start, val_start+val_size)
+    test_set   = sim_data.get_slice(test_start, test_start+test_size)    
+    train_loader = DataLoader(train_set, batch_size = batch_size, shuffle = True, num_workers = threads)
 
 
 ###  train the network!  ###
@@ -121,13 +153,17 @@ def trainer(model, optimizer, epoch, models, loss_array):
 
     # run through the mini batches!
     batch_count = 0 # Keep track of how many batches we've run through
+    model.train() # set training mode
     for b_idx, all_data in enumerate(train_loader):
-        model.train() # set training mode
+        # erase old gradient info
         optimizer.zero_grad()
 
         # split up the data for the time-lagged autoencoder
-        train_data = all_data if not time_lagged else all_data[:,:in_dim]
-        goal_data  = all_data if not time_lagged else all_data[:,in_dim:]
+        # and doesn't do anything if there's no time lag
+        # train_data = all_data if not time_lagged else all_data[:,:in_dim]
+        # goal_data  = all_data if not time_lagged else all_data[:,in_dim:]
+        train_data = all_data[:,:in_dim]
+        goal_data  = all_data[:,-in_dim:]
 
         # run the model
         recon = model(train_data)
@@ -144,7 +180,7 @@ def trainer(model, optimizer, epoch, models, loss_array):
 
         # print out stuff
         batch_count += 1
-        if b_idx % 100 == 0:
+        if b_idx % 250 == 0:
             print("Train Epoch %d, \tBatch index %d:   \tLoss: %f\tRecLoss: %f" % (epoch, b_idx, loss_scalar, rec_loss))
     print("Epoch %d has an average reconstruction loss of  %f" % (epoch, epoch_fail/batch_count))
     # different from the reconstruction loss for the most up-to-date model
@@ -152,8 +188,16 @@ def trainer(model, optimizer, epoch, models, loss_array):
     models.append(vae_model) # save it in case the loss goes up later
     loss_array.append(epoch_fail/batch_count) # keep track of loss
 
-
-
+def test(model, dataset):
+    """Takes a torch dataset/tensor as data and runs it through the model"""
+    model.eval()
+    data = torch.tensor(dataset.data[:], dtype = data_type)
+    inputs  = data[..., :in_dim]
+    answers = data[..., -in_dim:]
+    outs = model(inputs)
+    loss = model.vae_loss(outs, answers).item()
+    rec_loss = model.rec_loss.item() / len(dataset)
+    return loss, rec_loss
 
 if __name__ == "__main__":
     # if statement is to make sure the networks can be imported to other files without this code running
@@ -181,14 +225,14 @@ if __name__ == "__main__":
     des_loss = ((desired - sim_data.data[:,-in_dim:])**2).sum(1).mean()
     print("Considering just the double well axis gives a loss of", pca_loss)
 
-# Prepare for visualization
-inputs = sim_data.data[:,:in_dim]
-H, x_edges, y_edges = np.histogram2d(inputs[:,0], inputs[:,1], bins = 30)
-x_pts = 0.5 * (x_edges[:-1]+x_edges[1:])
-y_pts = 0.5 * (y_edges[:-1]+y_edges[1:])
-grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
-grid = torch.tensor(grid, dtype = data_type)
-# can imshow H or run grid through vae_model.just_encode(grid)[0]
+    # Prepare for visualization
+    inputs = sim_data.data[:,:in_dim]
+    H, x_edges, y_edges = np.histogram2d(inputs[:,0], inputs[:,1], bins = 30)
+    x_pts = 0.5 * (x_edges[:-1]+x_edges[1:])
+    y_pts = 0.5 * (y_edges[:-1]+y_edges[1:])
+    grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
+    grid = torch.tensor(grid, dtype = data_type)
+    # can imshow H or run grid through vae_model.just_encode(grid)[0]
 
 # Initialize the model
 vae_model = VAE(in_dim              = in_dim,
@@ -200,6 +244,10 @@ vae_model = VAE(in_dim              = in_dim,
                 kl_lambda           = kl_lambda,
                 data_type           = data_type,
                 pref_dataset        = sim_data.data[:])
+
+# If you want to save/load the model's parameters
+save_model = lambda model: torch.save(model, model_param_fname)
+load_model = lambda: torch.load(model_param_fname)
 
 # set the learning function
 if optim_fn == optim.SGD:
@@ -214,10 +262,9 @@ start_time = time.time() # Keep track of run time
 
 # Now actually do the training
 for epoch in range(n_epochs):
-    # if epoch == 2:
-    #     import pdb
-    #     pdb.set_trace()
     trainer(vae_model, optimizer, epoch, models, loss_array)
+    loss, rec_loss = test(vae_model, val_set)
+    print("Got %f validation loss (%f reconstruction)" % (loss, rec_loss))
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
     # vae_model.contour_plot2d(mode = 'r')

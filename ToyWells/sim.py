@@ -108,7 +108,7 @@ a = np.array(1e25, dtype=np.double)
 HWell = a*MultiPolynomial([        1, 0, 0]) # harmonic
 NWell = 1e22*MultiPolynomial([8,  0, -300, 0, 0]) # narrow (double) well
 
-xs = np.arange(-8, 8, 0.01)
+xs = np.arange(-10, 10, 0.01)
 plt.plot(xs, NWell(xs))
 plt.plot(xs, HWell(xs))
 plt.show()
@@ -146,7 +146,7 @@ for i in tqdm(range(tracks.shape[0])):
         j+= pdim
     # print(("Time %d ps: " % i), tracks[i,:])
 
-if False:
+def save_file():
     h5file = h5py.File('data/SimOutput.h5', 'w')
     h5file.create_dataset('particle_tracks', data=tracks)
     h5file.close()
@@ -164,3 +164,7 @@ plt.show()
 Hist, edges = np.histogram(tracks[:,0], bins = 30)
 plt.plot(0.5*(edges[1:]+edges[:-1]),Hist)
 plt.show()
+
+to_save = input("Do you want to save this particle tracks? (y/n) (If you're in console mode, you can save later manually with 'save_file')  ")
+if to_save.lower() == 'y' or to_save.lower() == 'yes':
+    save_file()

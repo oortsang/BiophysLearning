@@ -29,6 +29,8 @@ import pdb
 # vae_loss - computes the loss function given predictions and desired outputs
 # run_data - runs through the whole data set
 # plot_test - makes pretty plots of the model's predictions on the time series
+# latent_plot2d - for 2D data, it plots the latent subspace on top of the distribution of real data
+#                 and also plots the distribution of a 1D latent variable
 #
 # Note that whether it behaves like a time-lagged autoencoder or not is up to the training process
 class VAE(nn.Module):
@@ -188,12 +190,12 @@ class VAE(nn.Module):
                 # pdb.set_trace()
                 plt.plot(bigdata[:,i], label = ("Input %d"% (i+1)))
                 plt.plot(range(dt,dt+outputs.shape[0]), outputs[:,i], label = ("Reconstruction %d" % (i+1)))
-                plt.legend()
+                plt.legend(loc = 'lower right')
             plt.show()
         if ret:
             return outputs, latents
 
-    def contour_plot2d(self, mode='reconstruction', data=None, bins = 30):
+    def latent_plot2d(self, mode='reconstruction', data=None, bins = 30):
         """Note that this is only designed for 2D spaces
 
         Arguments:
