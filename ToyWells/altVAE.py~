@@ -40,11 +40,8 @@ class VAE(nn.Module):
                  encode_layers_means,
                  encode_layers_vars,
                  decode_layers,
-                 propagator_layers = None,
-                 time_lagged = True,
                  variational = True,
                  kl_lambda = 1,         # quasi-regularization term
-                 discount  = 0,
                  data_type = np.float,
                  pref_dataset=None):         # for use with the testing functions
         """Set up the variational autoencoder """
@@ -57,21 +54,13 @@ class VAE(nn.Module):
         self.encode_net_means = nn.Sequential(*encode_layers_means)
         self.encode_net_vars  = nn.Sequential(*encode_layers_vars)
 
-        # set up the propagator
-        if time_lagged and propagator_layers is not None:
-            self.propagator_net = nn.Sequential(*propagator_layers)
-        else:
-            self.propagator_net = None
-
         # set up the decoder
         self.decode_net = nn.Sequential(*decode_layers)
 
         self.variational  = variational
-        self.time_lagged  = time_lagged
         self.pref_dataset = pref_dataset
-        # quasi regularization factor...
+        # quasi regularization...
         self.kl_lambda = kl_lambda
-        self.discount  = discount
 
         # Ensure the networks have the right data types
         # PyTorch can be touchy if some variables are floats and others are doubles
@@ -80,14 +69,10 @@ class VAE(nn.Module):
             self.encode_net_means = self.encode_net_means.float()
             self.encode_net_vars  = self.encode_net_vars.float()
             self.decode_net       = self.decode_net.float()
-            if self.time_lagged and propagator_layers is not None:
-                self.propagator_net = self.propagator_net.float()
         else:
             self.encode_net_means = self.encode_net_means.double()
             self.encode_net_vars  = self.encode_net_vars.double()
             self.decode_net       = self.decode_net.double()
-            if self.time_lagged and propagator_layers is not None:
-                self.propagator_net = self.propagator_net.double()
 
     def encode(self, x):
         """Encoding from x (input) to z (latent).
@@ -129,32 +114,17 @@ class VAE(nn.Module):
 
     # run through encoder, sampler, and decoder
     def forward(self, x):
-        """Calls the other functions to run a batch/data set through the proper networks.
-        To deal with the possibility of propagation, we return a tuple - first element is
-        is the number of future steps to expect in the tensor...
-        """
+        """Calls the other functions to run a batch/data set through the proper networks"""
         # if we feed in too many dimensions, just take the first self.in_dim
         if x.dim() == 2 and x.shape[-1] != self.in_dim:
             x = x[:, :self.in_dim]
         z_dist    = self.encode(x)        # 1. Encode
         z_sample  = self.sample(*z_dist)  # 2. Sample
         x_decoded = self.decode(z_sample) # 3. Decode
-        # import pdb; pdb.set_trace()
-        if not self.time_lagged or self.propagator_net is None:
-            return (0, x_decoded[np.newaxis])
-            # Decoding returns the max-likelihood option rather than a full prob dist
-            # which seems to be desired behavior.. There's an implicit Gaussian centered around
-            # it, which is where we get the square-loss for reconstruction error... see Doersch...
-        else:
-            fut_steps = 1
-            all_xs = torch.zeros((1+fut_steps, *(x_decoded.shape)), dtype=self.data_type)
-            all_xs[0] = x_decoded
-            z_fut = z_sample
-
-            # propagate in latent space and decode
-            z_fut = self.propagator_net(z_fut)
-            all_xs[1+0] = self.decode(z_fut)
-            return (fut_steps, all_xs)
+        # Decoding returns the max-likelihood option rather than a full prob dist
+        # which seems to be desired behavior.. There's an implicit Gaussian centered around
+        # it, which is where we get the square-loss for reconstruction error... see Doersch...
+        return x_decoded
 
 
     def vae_loss(self, pred, truth):
@@ -185,7 +155,7 @@ class VAE(nn.Module):
             x = x[:, :self.in_dim]
         z_dist = self.encode(x)
         return z_dist[0].detach().numpy() # returns just the means
-
+        
     def run_data(self, data=None):
         """Runs the whole dataset through the network"""
         if data is None:
@@ -194,8 +164,8 @@ class VAE(nn.Module):
             data = self.pref_dataset
         self.eval()
         data = torchtensor(data, dtype=self.data_type)
-        _, recon = self(data)
-        return recon[0].detach().numpy()
+        recon = self(data).detach().numpy()
+        return recon
 
     def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0):
         """Plots the predictions of the model and its latent variables"""
@@ -207,21 +177,12 @@ class VAE(nn.Module):
                 return None
             data = self.pref_dataset
         bigdata = torch.tensor(data)
-        _, outputs = self(bigdata)
-        outputs = outputs[0].detach().numpy()
+        outputs = self(bigdata).detach().numpy()
         bigdata = bigdata.detach().numpy()
         latents = self.z[0].detach().numpy() # just give the means...
         if plot:
             plt.subplot(*axes, 1)
             plt.title("Latent variable%s (%d)" % (("s" if self.n_z>1 else ""), self.n_z))
-            plt.suptitle("%s%s Autoencoder%s with $\\lambda_{KL}$ = %.2f" % \
-                         ("Variational " if self.variational else "",
-                          "Time-lagged " if self.time_lagged else "",
-                          " (w/explicit propagation)" if (self.propagator_net is not None
-                                                          and self.time_lagged) else "",
-                          self.kl_lambda
-                         )
-            )
             plt.plot(latents)
             for i in range(self.in_dim):
                 plt.subplot(*axes, 2+i)
@@ -255,7 +216,7 @@ class VAE(nn.Module):
         grid = torch.tensor(grid, dtype = self.data_type)
 
         overlay_color = np.array((1,0.56, 0, 0))*0.65
-
+        
         if mode == 'latent dist' or mode == 'd':
             # plot the distribution of latent variables in latent space
             latents = self.just_encode(torch.tensor(data, dtype=self.data_type)).flatten() # get the mean score for each point on the grid
@@ -289,9 +250,7 @@ class VAE(nn.Module):
             # plot the requested features
             if mode == 'reconstruction' or mode == 'r':
                 # attempts to reconstruct the original data
-                _, rec_points = self(torch.tensor(data, dtype=self.data_type))
-                rec_points = rec_points[0].clone().detach().numpy()
-
+                rec_points = self(torch.tensor(data, dtype=self.data_type)).clone().detach().numpy()
                 H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
                 H_rec -= H_rec.min()
                 H_rec /= H_rec.max()
@@ -301,8 +260,7 @@ class VAE(nn.Module):
 
             elif mode == 'grid rep' or mode == 'g':
                 # shows the projection of the space onto the latent space
-                _, grid_points = self(torch.tensor(grid, dtype=self.data_type))
-                grid_points = grid_points[0].clone().detach().numpy()
+                grid_points = self(grid).clone().detach().numpy()
                 H_grid, _, _ = np.histogram2d(grid_points[:,0], grid_points[:,1], bins=(x_edges,y_edges))
                 H_grid -= H_grid.min()
                 H_grid /= H_grid.max()

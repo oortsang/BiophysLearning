@@ -10,9 +10,12 @@ from multipoly import MultiPolynomial
 # Brownian motion / taking random steps
 
 # kB = 1.380649e-23 # units of J/K
-# kB = 1.380649e-3 # units of kg ã² / s²
-kB = 1.380649e21 # units of kg ã² / ps²
-tstep = 10 # ps
+# m / s * (a / m) * (s / ps)
+#         (1e-10)    (1e12)
+# kB = 1.380649e-3 # units of kg ã² / s² (+2*10)
+kB = 1.380649e-27 # units of kg ã² / ps² (-2*12??)
+tstep = 2 # ps
+
 
 class Particle():
     def __init__(self, Pot, pos = 0, D = 0.1, T = 300, nsize = 1, dt = tstep):
@@ -27,8 +30,8 @@ class Particle():
            dt (scalar):              timestep in seconds
         """
         self.Pot   = Pot              # potential well
-        self.F     = -1*Pot.grad()    # force function
         self.DkT   = D/(kB*T)         # 1/gamma = D/kT
+        self.F     = -1*Pot.grad()    # force function
         self.tstep = tstep            # time step
         self.nsize = nsize            # noise size
         self.nsig  = np.sqrt(2*D*dt)  # noise standard deviation
@@ -48,21 +51,25 @@ class Particle():
 
     def vel(self, pos):
         force = self.F(pos)
-        noise = self.nsize * np.random.normal(0, self.nsig,  self.dim)
-        return (self.DkT * force + noise)
+        return self.DkT * force
+    
+    def noise(self):
+        return self.nsize * np.random.normal(0, self.nsig,  self.dim)
         
     def step(self):
         # # Euler integration
         # force = self.F(self.pos)
         # noise = self.nsize * np.random.normal(0, self.nsig, self.dim)
-        # v = self.DkT*force + noise
-        # self.pos += self.tstep * v
+        # v = self.DkT*force
+        # step_size= self.tstep * v + noise
 
         # Midpoint Integration
         v1 = self.vel(self.pos) # current velocity
-        k1 = self.tstep * v1 # Euler prediction of motion
+        k1 = self.tstep * v1 + self.noise() # Euler prediction of motion
         v2 = self.vel(self.pos + 0.5 * k1) # prediction from midway through the step
-        self.pos += self.tstep * v2
+        step_size = self.tstep * v2 + self.noise()
+
+        self.pos += step_size
 
 # TriCoeffs = np.array([ [0, 0, 0, 0, 0, 0,   1],   # x^6
 #                        [0, 0, 0, 0, 0, 0, 0.2],     # x^5
@@ -103,19 +110,18 @@ class Particle():
 # NewOldNWell = MultiPolynomial([80,0, -0.5, 0, 0]) # narrow (double) well
 
 
-a = np.array(1e25, dtype=np.double)
-# import pdb; pdb.set_trace()
-HWell = a*MultiPolynomial([        1, 0, 0]) # harmonic
-NWell = 1e22*MultiPolynomial([8,  0, -300, 0, 0]) # narrow (double) well
+a = np.array(1e-25, dtype=np.double)
+HWell = a*MultiPolynomial([              1, 0, 0]) # harmonic
+NWell = 1e-27*MultiPolynomial([5,  0, -200, 0, 0]) # narrow (double) well
 
 xs = np.arange(-10, 10, 0.01)
 plt.plot(xs, NWell(xs))
-plt.plot(xs, HWell(xs))
+# plt.plot(xs, HWell(xs))
 plt.show()
 
 
-p1 = Particle(NWell, D = 1e-5, nsize = 1)
-p2 = Particle(HWell, D = 1e-4, nsize = 1)
+p1 = Particle(NWell, D = 0.03, nsize = 1, pos = 3)
+p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
@@ -130,7 +136,7 @@ particles = [p1,
              # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
 # nsteps = 105000
-nsteps = 505000
+nsteps = 125000
 dimensions = 0
 for i in range(npart):
     dimensions += particles[i].dim
@@ -138,6 +144,8 @@ print("Dimensions:", dimensions)
 tracks = np.zeros((nsteps, dimensions), dtype=np.float32)
 for i in tqdm(range(tracks.shape[0])):
     j = 0
+    # if i == 380:
+    #     pdb.set_trace()
     # pdb.set_trace()
     for p in particles:
         p.step()
