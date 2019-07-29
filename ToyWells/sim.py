@@ -14,8 +14,7 @@ from multipoly import MultiPolynomial
 #         (1e-10)    (1e12)
 # kB = 1.380649e-3 # units of kg ã² / s² (+2*10)
 kB = 1.380649e-27 # units of kg ã² / ps² (-2*12??)
-tstep = 2 # ps
-
+tstep = 1 # ps
 
 class Particle():
     def __init__(self, Pot, pos = 0, D = 0.1, T = 300, nsize = 1, dt = tstep):
@@ -112,15 +111,17 @@ class Particle():
 
 a = np.array(1e-25, dtype=np.double)
 HWell = a*MultiPolynomial([              1, 0, 0]) # harmonic
-NWell = 1e-27*MultiPolynomial([5,  0, -200, 0, 0]) # narrow (double) well
+NWell = 5e-27*MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
+TWell = 1e-27*MultiPolynomial([1, 0, -41, 0, 400, 0, 0])
 
 xs = np.arange(-10, 10, 0.01)
 plt.plot(xs, NWell(xs))
+plt.plot(xs, TWell(xs))
 # plt.plot(xs, HWell(xs))
 plt.show()
 
 
-p1 = Particle(NWell, D = 0.03, nsize = 1, pos = 3)
+p1 = Particle(TWell, D = 0.01, nsize = 1, pos = 3)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)

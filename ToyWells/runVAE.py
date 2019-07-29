@@ -39,7 +39,7 @@ import time
 from sklearn.decomposition import PCA
 
 # import from other modules in the folder
-from VAE import VAE
+from altVAE import VAE
 from loader import nor_sim_data # normalized dimensions
 from loader import raw_sim_data
 from loader import pca_sim_data
@@ -53,13 +53,14 @@ threads = 4 # number of threads to use to train
 model_param_fname = "data/model_parameters"
 
 ###  Network Hyperparameters  ###
-time_lagged = True
 variational = True
+time_lagged = True
+propagator  = True
 
 if time_lagged:
     sim_data = tla_sim_data
 else:
-    sim_data = con_sim_data
+    sim_data = nor_sim_data
 
 n_epochs = 30
 batch_size = 100
@@ -81,8 +82,18 @@ encode_layers_means = [nn.Linear(in_dim, h_size),
                       ]
 encode_layers_vars  = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
-                       nn.Linear(h_size, n_z),
+                       nn.Linear(h_size, n_z)
                       ]
+
+
+propagator_layers   = [nn.Linear(n_z, h_size),
+                       nn.ReLU(),
+                       nn.Linear(h_size, n_z)
+                      ]
+if not propagator:
+    propagator_layers = None
+discount = 1.5
+
 decode_layers       = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
                        nn.Linear(h_size,in_dim)
@@ -94,12 +105,12 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 5e-3           # learning rate
-weight_decay = 1e-4 # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+lr = 7e-3           # learning rate
+weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 
-kl_lambda = 0.1     # How much weight to give to the KL-Divergence term in loss?
+kl_lambda = 1     # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -134,7 +145,7 @@ else:
     # Make the sets and training loader
     train_set  = sim_data.get_slice(0, train_size)
     val_set    = sim_data.get_slice(val_start, val_start+val_size)
-    test_set   = sim_data.get_slice(test_start, test_start+test_size)    
+    test_set   = sim_data.get_slice(test_start, test_start+test_size)
     train_loader = DataLoader(train_set, batch_size = batch_size, shuffle = True, num_workers = threads)
 
 
@@ -166,12 +177,18 @@ def trainer(model, optimizer, epoch, models, loss_array):
         goal_data  = all_data[:,-in_dim:]
 
         # run the model
-        recon = model(train_data)
+        fut_steps, recon = model(train_data)
 
         # get loss
-        loss  = model.vae_loss(recon, goal_data)
+        if fut_steps == 0:
+            loss     = model.vae_loss(recon[0], goal_data)
+            rec_loss = model.rec_loss.item()/train_data.shape[0] # reconstruction loss
+        else:
+            loss     =  model.vae_loss(recon[0], goal_data)
+            rec_loss =  model.rec_loss.item()/train_data.shape[0] # reconstruction loss
+            loss     += model.vae_loss(recon[1], goal_data) * model.discount
+            rec_loss += model.rec_loss.item()/train_data.shape[0] # reconstruction loss
         loss_scalar = loss.item()
-        rec_loss = model.rec_loss.item()/train_data.shape[0] # reconstruction loss
         epoch_fail += rec_loss
 
         # backprop + take a step
@@ -194,21 +211,33 @@ def test(model, dataset):
     data = torch.tensor(dataset.data[:], dtype = data_type)
     inputs  = data[..., :in_dim]
     answers = data[..., -in_dim:]
-    outs = model(inputs)
-    loss = model.vae_loss(outs, answers).item()
-    rec_loss = model.rec_loss.item() / len(dataset)
+    fut_steps, outs = model(inputs)
+    if fut_steps == 0:
+        loss = model.vae_loss(outs, answers).item()
+        rec_loss = model.rec_loss.item() / len(dataset)
+    else:
+        loss = model.vae_loss(outs[0], inputs)
+        rec_loss = model.rec_loss.item()/len(dataset) # reconstruction loss
+
+        loss += model.discount * model.vae_loss(outs[1], answers)
+        rec_loss += model.rec_loss.item()/len(dataset) # reconstruction loss
     return loss, rec_loss
+
+
+
+
+### Now for the actual running and comparison against other methods ###
 
 if __name__ == "__main__":
     # if statement is to make sure the networks can be imported to other files without this code running
     # However, if you want access to the variables by command line while running the script in interactive
-    # mode, you may want to move everything outside the if statemnt.
-    # pass
+    # mode, you may want to move everything outside the if statement.
+
     # Compare against a naive guess of averages
     naive = sim_data[-50000:,:in_dim].mean(0)
     naive_loss = ((naive - sim_data.data[:,-in_dim:])**2).sum(1).mean()
     print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
-    
+
     # Compare against PCA
     pca_start = time.time()
     pca = PCA()
@@ -240,8 +269,11 @@ vae_model = VAE(in_dim              = in_dim,
                 encode_layers_means = encode_layers_means,
                 encode_layers_vars  = encode_layers_vars,
                 decode_layers       = decode_layers,
+                propagator_layers   = propagator_layers,
+                time_lagged         = time_lagged,
                 variational         = variational,
                 kl_lambda           = kl_lambda,
+                discount            = discount,
                 data_type           = data_type,
                 pref_dataset        = sim_data.data[:])
 
@@ -258,14 +290,29 @@ else:
 # miscellaneous book-keeping variables
 models = [] # Stores old models in case an older one did better
 loss_array = []
+val_loss_array = []
 start_time = time.time() # Keep track of run time
 
 # Now actually do the training
 for epoch in range(n_epochs):
     trainer(vae_model, optimizer, epoch, models, loss_array)
-    loss, rec_loss = test(vae_model, val_set)
-    print("Got %f validation loss (%f reconstruction)" % (loss, rec_loss))
+    val_loss, val_rec_loss = test(vae_model, val_set)
+    print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
+    val_loss_array.append(val_loss)
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
-    # vae_model.contour_plot2d(mode = 'r')
-    # validate(epoch) # to tell you how it's doing on the test set
+
+    if epoch >= 3 and val_loss > val_loss_array[-4] and \
+       val_loss > val_loss_array[-3] and \
+       val_loss > val_loss_array[-2]:
+        print("Stopping training since the validation error has increased over the past 3 epochs.\n"
+              "Replacing vae_model with the most recent model with lowest total validation loss.")
+        idx = val_loss_array[::-1].index(min(val_loss_array)) # gives the most recent model with lowest validation error
+        vae_model = models[idx]
+        break
+
+vae_model.plot_test(test_set)
+
+vae_model.latent_plot2d(mode = 'r')
+vae_model.latent_plot2d(mode = 'w')
+vae_model.plot_test()
