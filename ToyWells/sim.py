@@ -51,10 +51,10 @@ class Particle():
     def vel(self, pos):
         force = self.F(pos)
         return self.DkT * force
-    
+
     def noise(self):
         return self.nsize * np.random.normal(0, self.nsig,  self.dim)
-        
+
     def step(self):
         # # Euler integration
         # force = self.F(self.pos)
@@ -78,27 +78,47 @@ class Particle():
 #                        [0,0,0.2,0.12,5.118, 0.292, 0.405],  # x^1
 #                        [1, 0.2, .5, .314, .2565, .114, .7565] # x^0
 #                      ])
+
+# input values scaled down  by a factor of 2
+# ((x-2)^2+(y)^2)*((x+1)^2+(y+1.73)^2)*((x+2)^2+(y-1.73)^2)
+# TriCoeffs = np.array([[ 0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.004],
+#                       [ 0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.002],
+#                       [ 0.   ,  0.   ,  0.   ,  0.   ,  0.012,  0.   , -0.007],
+#                       [ 0.   ,  0.   ,  0.   ,  0.   ,  0.003,  0.002, -0.055],
+#                       [ 0.   ,  0.   ,  0.012,  0.003,  0.001, -0.023, -0.009],
+#                       [ 0.   ,  0.   ,  0.002,  0.002,  0.16 ,  0.018,  0.051],
+#                       [ 0.004,  0.002,  0.008,  0.01 ,  0.016,  0.014,  0.189]])
+
+# ((x-4)^2+(y)^2)*((x)^2+(y-3)^2)*((x+4)^2+(y)^2)
+RipCoeffs = np.array([[    0,     0,     0,     0,     0,     0,     1],
+                      [    0,     0,     0,     0,     0,     0,     0],
+                      [    0,     0,     0,     0,     3,    -6,   -23],
+                      [    0,     0,     0,     0,     0,     0,     0],
+                      [    0,     0,     3,   -12,    18,   192,   -32],
+                      [    0,     0,     0,     0,     0,     0,     0],
+                      [    1,    -6,    41,  -192,   544, -1536,  2304]])
+
 # QCoeffs = np.zeros((5,5))
 # QCoeffs[4,4] = -1
 # QCoeffs[4,2] = 1
 # QCoeffs[2,4] = 1
 # QCoeffs[2,2] = -1
 
-
-# TWell = MultiPolynomial(TriCoeffs)
 # QWell = MultiPolynomial(QCoeffs)
 # CromWell next
+# RWell = 0.001*MultiPolynomial(RipCoeffs)
 
-# xs = np.arange(-2, 2, 0.05)
-# Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))]).reshape((xs.shape[0], xs.shape[0], 2))
-# xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
-# outs = np.zeros(xxs.shape[0])
-# for i in range(xxs.shape[0]):
-#     outs[i] = TWell(xxs[i])
-# outs = outs.reshape(Xs2d.shape[:2])
-# outs = np.clip(outs, 0,5)
-# plt.imshow(outs)
-# plt.show()
+# if RWell is not None:
+#     xs = np.arange(-6, 6, 0.05)
+#     Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))]).reshape((xs.shape[0], xs.shape[0], 2))
+#     xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
+#     outs = np.zeros(xxs.shape[0])
+#     for i in range(xxs.shape[0]):
+#         outs[i] = RWell(xxs[i])
+#     outs = outs.reshape(Xs2d.shape[:2])
+#     outs = np.clip(outs, 0,5)
+#     plt.imshow(outs,cmap='jet')
+#     plt.show()
 
 
 # WWell = MultiPolynomial([            0.5, 0, 0]) # wide
@@ -112,21 +132,27 @@ class Particle():
 a = np.array(1e-25, dtype=np.double)
 HWell = a*MultiPolynomial([              1, 0, 0]) # harmonic
 NWell = 5e-27*MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
-TWell = 1e-27*MultiPolynomial([1, 0, -41, 0, 400, 0, 0])
+TWell = 1e-27*MultiPolynomial([1, 0, -50, 0, 625, 0, 0])
+# TWell = 4e-25*MultiPolynomial(TriCoeffs)
+RWell = 9e-28*MultiPolynomial(RipCoeffs)
 
-xs = np.arange(-10, 10, 0.01)
-plt.plot(xs, NWell(xs))
-plt.plot(xs, TWell(xs))
-# plt.plot(xs, HWell(xs))
-plt.show()
+# (x+4)(x+5)*(x-4)(x-5)*x*x has 3 local minima
+# --> x^6 - 41 x^4 + 400 x^2
 
 
-p1 = Particle(TWell, D = 0.01, nsize = 1, pos = 3)
+# xs = np.arange(-10, 10, 0.01)
+# plt.plot(xs, NWell(xs))
+# # plt.plot(xs, TWell(xs))
+# # plt.plot(xs, HWell(xs))
+# plt.show()
+
+
+p1 = Particle(RWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 2
+npart = 1
 particles = [p1,
              p2,
              # p3,
@@ -136,8 +162,8 @@ particles = [p1,
              # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
              # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
-# nsteps = 105000
-nsteps = 125000
+nsteps = 525000
+# nsteps = 225000
 dimensions = 0
 for i in range(npart):
     dimensions += particles[i].dim
@@ -170,8 +196,11 @@ print("Fraction of time particle 1 spends on the right of 0:", np.sum(tracks[:,0
 plt.plot(np.arange(0,(i+1)*tstep, tstep), tracks)
 plt.show()
 
-Hist, edges = np.histogram(tracks[:,0], bins = 30)
-plt.plot(0.5*(edges[1:]+edges[:-1]),Hist)
+# Hist, edges = np.histogram(tracks[:,0], bins = 30)
+# plt.plot(0.5*(edges[1:]+edges[:-1]),Hist)
+# plt.show()
+
+plt.hist2d(tracks[:,0], tracks[:,1], bins = 30)
 plt.show()
 
 to_save = input("Do you want to save this particle tracks? (y/n) (If you're in console mode, you can save later manually with 'save_file')  ")

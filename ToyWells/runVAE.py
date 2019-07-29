@@ -39,7 +39,7 @@ import time
 from sklearn.decomposition import PCA
 
 # import from other modules in the folder
-from altVAE import VAE
+from VAE import VAE
 from loader import nor_sim_data # normalized dimensions
 from loader import raw_sim_data
 from loader import pca_sim_data
@@ -56,6 +56,7 @@ model_param_fname = "data/model_parameters"
 variational = True
 time_lagged = True
 propagator  = True
+denoising   = True
 
 if time_lagged:
     sim_data = tla_sim_data
@@ -77,24 +78,30 @@ n_z    = 1 # dimensionality of latent space
 # the layers themselves
 encode_layers_means = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
 encode_layers_vars  = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
-                       nn.Linear(h_size, n_z)
-                      ]
-
-
-propagator_layers   = [nn.Linear(n_z, h_size),
+                       nn.Linear(h_size, h_size),
                        nn.ReLU(),
                        nn.Linear(h_size, n_z)
                       ]
+
+
+propagator_layers   = [nn.Linear(n_z, n_z+1),
+                       nn.ReLU(),
+                       nn.Linear(n_z+1, n_z)
+                      ]
 if not propagator:
     propagator_layers = None
-discount = 1.5
+discount = 1.0
 
 decode_layers       = [nn.Linear(n_z, h_size),
+                       nn.ReLU(),
+                       nn.Linear(h_size, h_size),
                        nn.ReLU(),
                        nn.Linear(h_size,in_dim)
                       ]
@@ -105,18 +112,19 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 7e-3           # learning rate
-weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+lr = 3e-3           # learning rate
+weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
+denoise_sig = 0.01
 
-kl_lambda = 1     # How much weight to give to the KL-Divergence term in loss?
+kl_lambda = 0.166     # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
 # Finish preparing data
-train_amt = 0.8 # fraction of samples used as training
-val_amt   = 0.1 # fractions of samples used as validation
+train_amt = 0.6 # fraction of samples used as training
+val_amt   = 0.3 # fractions of samples used as validation
 test_amt  = 1 - train_amt - val_amt
 
 # DataLoaders to help with minibatching
@@ -176,6 +184,12 @@ def trainer(model, optimizer, epoch, models, loss_array):
         train_data = all_data[:,:in_dim]
         goal_data  = all_data[:,-in_dim:]
 
+
+        # Denoise as suggested by http://www.cs.toronto.edu/~larocheh/publications/icml-2008-denoising-autoencoders.pdf (section 2.3 with q_D)
+        # Idea is that you add noise and try to reconstruct the original (which itself has noise..)
+        if denoising:
+            train_data += torch.tensor(np.random.normal(0, denoise_sig, train_data.shape), dtype=data_type)
+
         # run the model
         fut_steps, recon = model(train_data)
 
@@ -197,7 +211,7 @@ def trainer(model, optimizer, epoch, models, loss_array):
 
         # print out stuff
         batch_count += 1
-        if b_idx % 250 == 0:
+        if b_idx % 125 == 0:
             print("Train Epoch %d, \tBatch index %d:   \tLoss: %f\tRecLoss: %f" % (epoch, b_idx, loss_scalar, rec_loss))
     print("Epoch %d has an average reconstruction loss of  %f" % (epoch, epoch_fail/batch_count))
     # different from the reconstruction loss for the most up-to-date model
@@ -298,18 +312,18 @@ for epoch in range(n_epochs):
     trainer(vae_model, optimizer, epoch, models, loss_array)
     val_loss, val_rec_loss = test(vae_model, val_set)
     print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
-    val_loss_array.append(val_loss)
+    # val_loss_array.append(val_loss)
+    val_loss_array.append(val_rec_loss)
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
 
-    if epoch >= 3 and val_loss > val_loss_array[-4] and \
-       val_loss > val_loss_array[-3] and \
-       val_loss > val_loss_array[-2]:
+    cutoff = 5
+    if epoch >= cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
         print("Stopping training since the validation error has increased over the past 3 epochs.\n"
               "Replacing vae_model with the most recent model with lowest total validation loss.")
-        idx = val_loss_array[::-1].index(min(val_loss_array)) # gives the most recent model with lowest validation error
-        vae_model = models[idx]
         break
+idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.1, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error
+vae_model = models[idx]
 
 vae_model.plot_test(test_set)
 

@@ -72,20 +72,30 @@ class MultiPolynomial():
         # convenient syntax like f(3, 4)
         return self.eval(x)
 
-    def __rmul__(self, scalar):
-        newcoeffs = scalar * self.coeffs
-        return MultiPolynomial(np.array(newcoeffs))
+    # def __add__(self, other):
+    #     if other.__class__ == self.__class__:
+    #         new_dim = min(other.coeffs.shape[-1], self.coeffs.shape[-1])
 
-    def __mul__(self, scalar):
-        newcoeffs = scalar * self.coeffs
-        return MultiPolynomial(np.array(newcoeffs))
+
+    def __rmul__(self, obj):
+        if obj.__class__ != self.__class__:
+            newcoeffs = obj * self.coeffs
+            return MultiPolynomial(np.array(newcoeffs))
+
+    def __mul__(self, obj):
+        if obj.__class__ != self.__class__:
+            newcoeffs = obj * self.coeffs
+            return MultiPolynomial(np.array(newcoeffs))
+        # else: # if we're multiplying by the same type
+        #     d1 = self.coeffs.shape[-1]
+        #     d2 = self.coeffs.shape[-1]
+        #     new_coeffs = np.array()
 
     def __repr__(self):
         ret_string = "MultiPolynomial object with %d variables; " % (self.dim)
         ret_string += "returns a " + ("vector" if self.return_vector else "scalar") + "\n"
 
         return ret_string
-
 
 # F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
 # H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree

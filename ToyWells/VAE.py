@@ -214,7 +214,7 @@ class VAE(nn.Module):
         if plot:
             plt.subplot(*axes, 1)
             plt.title("Latent variable%s (%d)" % (("s" if self.n_z>1 else ""), self.n_z))
-            plt.suptitle("%s%s Autoencoder%s with $\\lambda_{KL}$ = %.2f" % \
+            plt.suptitle("%s%sAutoencoder%s with $\\lambda_{KL}$ = %.2f" % \
                          ("Variational " if self.variational else "",
                           "Time-lagged " if self.time_lagged else "",
                           " (w/explicit propagation)" if (self.propagator_net is not None
@@ -301,7 +301,8 @@ class VAE(nn.Module):
 
             elif mode == 'grid rep' or mode == 'g':
                 # shows the projection of the space onto the latent space
-                _, grid_points = self(torch.tensor(grid, dtype=self.data_type))
+                # _, grid_points = self(torch.tensor(grid, dtype=self.data_type))
+                _, grid_points = self(grid)
                 grid_points = grid_points[0].clone().detach().numpy()
                 H_grid, _, _ = np.histogram2d(grid_points[:,0], grid_points[:,1], bins=(x_edges,y_edges))
                 H_grid -= H_grid.min()
