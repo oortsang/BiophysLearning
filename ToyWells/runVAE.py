@@ -61,7 +61,7 @@ denoising   = True
 if time_lagged:
     sim_data = tla_sim_data
 else:
-    sim_data = nor_sim_data
+    sim_data = con_sim_data
 
 n_epochs = 30
 batch_size = 100
