@@ -11,11 +11,27 @@
 #     The VAE shrinks down a configuration to a predetermined number of latent variables and
 # attempts to reconstruct the original configuration. The VAE is different from the standard
 # autoencoder in that it models the representation in latent space by a probability distribution
-# rather than as a single value. This makes the latent space a bit more interpretable and enforces
-# some continuity in the relation between observable and latent space.
+# rather than as a single value. This makes the latent space a bit more interpretable and
+# enforces some continuity in the relation between observable and latent space.
 #     The actual TAE/VAE structure is described in VAE.py, but almost all the relevant tunable
 # variables/hyperparameters such as network shape and learning rate are found in this file. This
 # system is built off of PyTorch.
+#
+#     This version of the code supports an "explicit propagator." In the TAE described above,
+# the input (x_t) is at time t, and the outputted "reconstruction" is at time t+dt (x'_(t+dt)).
+# However, this means that the meaning of the latent space is a bit ambiguous, and it's
+# unclear where the time step into the future is happening.
+#     Therefore, in the explicit propagator model, the latent variable at time t (= z_t) gets
+# passed a decoder to reconstruct at time t (= x'_t). Meanwhile, we also run the latent variable
+# through a propagator to get z_(t+dt) = P (z_t). This new latent variable z_(t+dt) is then
+# passed through the decoder to find a reconstruction for time t+dt (= z_(t+dt)).
+
+
+
+# variable representing time t gets copied. The original, z_t is passed through the decoder to
+# reconstruct the input at time t. The copy is run through the propagator first to yield a
+# latent z_(t+dt), which is then passed through the same decoder to reconstruct the input
+# at time t+dt (x_(t+dt))
 #
 # See https://arxiv.org/pdf/1606.05908.pdf (Carl Doersch's Tutorial on Variational Autoencoders)
 #     https://wiseodd.github.io/techblog/2016/12/10/variational-autoencoder/
@@ -80,6 +96,8 @@ encode_layers_means = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
                        nn.Linear(h_size, h_size),
                        nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
@@ -87,9 +105,19 @@ encode_layers_vars  = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
                        nn.Linear(h_size, h_size),
                        nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
                        nn.Linear(h_size, n_z)
                       ]
 
+decode_layers       = [nn.Linear(n_z, h_size),
+                       nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
+                       nn.Linear(h_size,in_dim)
+                      ]
 
 propagator_layers   = [nn.Linear(n_z, n_z+1),
                        nn.ReLU(),
@@ -99,13 +127,6 @@ if not propagator:
     propagator_layers = None
 discount = 1.0
 
-decode_layers       = [nn.Linear(n_z, h_size),
-                       nn.ReLU(),
-                       nn.Linear(h_size, h_size),
-                       nn.ReLU(),
-                       nn.Linear(h_size,in_dim)
-                      ]
-
 ## Learning Algorithm Hyperparameters
 optim_fn = optim.Adam
 # optim_fn = optim.SGD
@@ -113,12 +134,12 @@ optim_fn = optim.Adam
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
 lr = 3e-3           # learning rate
-weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.01
+denoise_sig = 0.007
 
-kl_lambda = 0.166     # How much weight to give to the KL-Divergence term in loss?
+kl_lambda = 0.1066     # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -183,7 +204,6 @@ def trainer(model, optimizer, epoch, models, loss_array):
         # goal_data  = all_data if not time_lagged else all_data[:,in_dim:]
         train_data = all_data[:,:in_dim]
         goal_data  = all_data[:,-in_dim:]
-
 
         # Denoise as suggested by http://www.cs.toronto.edu/~larocheh/publications/icml-2008-denoising-autoencoders.pdf (section 2.3 with q_D)
         # Idea is that you add noise and try to reconstruct the original (which itself has noise..)
@@ -317,13 +337,15 @@ for epoch in range(n_epochs):
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
 
-    cutoff = 5
-    if epoch >= cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
+    cutoff = 3
+    if epoch >= 5 and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
         print("Stopping training since the validation error has increased over the past 3 epochs.\n"
               "Replacing vae_model with the most recent model with lowest total validation loss.")
         break
-idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.1, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error
+
+idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.01, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error but biases more recent runs
 vae_model = models[idx]
+print("Selecting the model from epoch", idx)
 
 vae_model.plot_test(test_set)
 

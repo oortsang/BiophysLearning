@@ -131,7 +131,8 @@ RipCoeffs = np.array([[    0,     0,     0,     0,     0,     0,     1],
 
 a = np.array(1e-25, dtype=np.double)
 HWell = a*MultiPolynomial([              1, 0, 0]) # harmonic
-NWell = 5e-27*MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
+# NWell = 5e-27*MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
+NWell = 1e-27*MultiPolynomial([1,  0, -40, 0, 0]) # not-so-narrow (double) well
 TWell = 1e-27*MultiPolynomial([1, 0, -50, 0, 625, 0, 0])
 # TWell = 4e-25*MultiPolynomial(TriCoeffs)
 RWell = 9e-28*MultiPolynomial(RipCoeffs)
@@ -147,12 +148,12 @@ RWell = 9e-28*MultiPolynomial(RipCoeffs)
 # plt.show()
 
 
-p1 = Particle(RWell, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(NWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 1
+npart = 2
 particles = [p1,
              p2,
              # p3,
@@ -162,7 +163,7 @@ particles = [p1,
              # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
              # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
-nsteps = 525000
+nsteps = 225000
 # nsteps = 225000
 dimensions = 0
 for i in range(npart):

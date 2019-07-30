@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 
 start_cutoff = 0 # where the data begin
 dt = 50 # time lag in frames
-force_recompute = True # recompute the transformations even if there isn't a new simulation?
+force_recompute = False # recompute the transformations even if there isn't a new simulation?
 
 # Class to hold the data we load
 class MyData(data.TensorDataset):
@@ -64,7 +64,7 @@ def convolve(dataset):
         norm_data[:,i] = clipped_data[:,i] - mu
         # sig = (clipped_data[:,i]).std() # standard deviation 1 --> variance 1
         # norm_data[:,i] = (clipped_data[:,i] - mu) / sig
-    support = dt//2
+    support = dt
 
     kernel = bspln3(np.arange(-2, 2, 4/support), support)
     # kernel = np.array([-0.125, 0, 1.25, 2, 1.25, 0, -0.125], dtype=np.float32)
@@ -108,16 +108,16 @@ def time_lag(dataset):
 
     # get rid of the means
     for i in range(data_shape[1]):
-        mu = mean_free_data[:, i].mean()
+        mu  = mean_free_data[:, i].mean()
         mean_free_data[:, i] -= mu
 
-    # # Trying out convolution
-    # support = dt//2
-    # kernel = bspln3(np.arange(-2, 2, 4/support), support)
-    # conv_data = np.zeros((mean_free_data.shape[0] - kernel.shape[0] + 1, mean_free_data.shape[1]), dtype=np.float32)
-    # conv_data[:,0] = np.convolve(mean_free_data[:,0], kernel, mode = 'valid')
-    # conv_data[:,1] = np.convolve(mean_free_data[:,1], kernel, mode = 'valid')
-    # mean_free_data = conv_data
+    # Trying out convolution
+    support = dt//2
+    kernel = bspln3(np.arange(-2, 2, 4/support), support)
+    conv_data = np.zeros((mean_free_data.shape[0] - kernel.shape[0] + 1, mean_free_data.shape[1]), dtype=np.float32)
+    conv_data[:,0] = np.convolve(mean_free_data[:,0], kernel, mode = 'valid')
+    conv_data[:,1] = np.convolve(mean_free_data[:,1], kernel, mode = 'valid')
+    mean_free_data = conv_data
 
     # Whiten the data
     covar = np.cov(mean_free_data[:-dt,:].T)
@@ -126,10 +126,14 @@ def time_lag(dataset):
 
     mean_free_data = mean_free_data @ covar_sqinv.T
 
-    # # optionally scramble the data
+    # # Optionally scramble the data
     # # rotate = 0.5*np.array([[np.sqrt(2), np.sqrt(2)], [-np.sqrt(2), np.sqrt(2)]], dtype=np.float32)
     # scramble = np.random.rand(2,2)
     # mean_free_data = mean_free_data @ scramble.T
+    # mean_free_data[:,1] += 3*np.sqrt(np.abs(mean_free_data[:,0]))
+    # mean_free_data[:,1] += 3*np.sin(np.abs(mean_free_data[:,0]))
+    mean_free_data[:,1] += 3*np.cos(mean_free_data[:,0])
+
 
     # copy over data from dt timesteps later
     lag_data = np.zeros((mean_free_data.shape[0] - dt, 2 * mean_free_data.shape[1]), dtype = np.float32)
@@ -157,11 +161,15 @@ files = [(norfile, normalize),
 
 for file_name, fxn in files:
     needs_recompute = False
-    if os.path.isfile(file_name):
+    if os.path.getmtime(os.path.basename(__file__)) > os.path.getmtime(file_name):
+        # if this python file has been modified since the last simulation
+        needs_recompute = True
+    elif os.path.isfile(file_name):
         if os.path.getmtime(rawfile) > os.path.getmtime(file_name):
             needs_recompute = True
     else:
         needs_recompute = True
+
     if needs_recompute or force_recompute:
         print("Creating/updating", file_name)
         new_data = fxn(raw_sim_data)
