@@ -42,6 +42,17 @@ class MyData(data.TensorDataset):
         return new_set
 
 
+
+def remove_means(x, norm = False):
+    for i in range(x.shape[1]):
+        mu       = x[:, i].mean()
+        x[:, i] -= mu
+    if norm:
+        for i in range(x.shape[1]):
+            sig      = x[:, i].std()
+            x[:, i] /= sig
+    return x
+
 def bspln3(x, support):
     """Interpolating kernel """
     ret = np.zeros(x.shape[0])
@@ -55,50 +66,58 @@ def bspln3(x, support):
             ret[i] = 2/3 - xx**2 + 1/2*xx**3
     return ret
 
-def convolve(dataset):
-    """Set each dimension to have mean 0, variance 1 then convolves over the whole thing using a spline"""
-    norm_data = np.zeros(dataset.data.shape, dtype = np.float32)[start_cutoff:]
-    clipped_data = dataset[start_cutoff:, :] # smooth out the beginning
-    for i in range(dataset.data.shape[1]):
-        mu  = (clipped_data[:,i]).mean()
-        norm_data[:,i] = clipped_data[:,i] - mu
-        # sig = (clipped_data[:,i]).std() # standard deviation 1 --> variance 1
-        # norm_data[:,i] = (clipped_data[:,i] - mu) / sig
-    support = dt
-
-    kernel = bspln3(np.arange(-2, 2, 4/support), support)
-    # kernel = np.array([-0.125, 0, 1.25, 2, 1.25, 0, -0.125], dtype=np.float32)
-
-
-    conv_data = np.zeros((norm_data.shape[0] - kernel.shape[0] + 1, norm_data.shape[1]), dtype=np.float32)
-    conv_data[:,0] = np.convolve(norm_data[:,0], kernel, mode = 'valid')
-    conv_data[:,1] = np.convolve(norm_data[:,1], kernel, mode = 'valid')
-
-    covar = np.cov(conv_data[:-dt, :].T)
+def whiten(x):
+    """Whitens using svd from np.linalg"""
+    covar = np.cov(x[:-dt, :].T)
     u, s, vh = np.linalg.svd(covar)
     covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
-    conv_data = conv_data @ covar_sqinv.T
-    conv_data = conv_data.astype(np.float32)
+    xw = x @ covar_sqinv.T
+    # xw = u @ vh
+    xw.astype(x.dtype)
+    return xw
 
+def conver(x, kfunc = bspln3, support = dt):
+    """Performs the convolution itself on the data"""
+    kernel = kfunc(np.arange(-2, 2, 4/support), support)
+    conv_data = np.zeros((x.shape[0] - kernel.shape[0] + 1, x.shape[1]), dtype = x.dtype)
+    for j in range(conv_data.shape[-1]):
+        conv_data[:,j] = np.convolve(x[:,j], kernel, mode = 'valid')
     return conv_data
+
+def scrambler(x):
+    """Performs some scrambling operation"""
+    # # A few possible ways to scramble the data
+    # x = 0.5*np.array([[np.sqrt(2), np.sqrt(2)], [-np.sqrt(2), np.sqrt(2)]], dtype=np.float32)
+    # scramble = np.random.rand(2,2)
+    # x = x @ scramble.T
+    # x[:,1] += 3*np.sqrt(np.abs(x[:,0]))
+    x[:,1] += 3 * np.cos(x[:,0])
+    return x
+
 
 def normalize(dataset):
     """Set each dimension to have mean 0, variance 1; also clips the first 500 datapoints because they """
     norm_data = np.zeros(dataset.data.shape, dtype = np.float32)[start_cutoff:]
     clipped_data = dataset[start_cutoff:, :] # smooth out the beginning
-    for i in range(dataset.data.shape[1]):
-        mu  = (clipped_data[:,i]).mean()
-        norm_data[:,i] = clipped_data[:,i] - mu
-        # sig = (clipped_data[:,i]).std() # standard deviation 1 --> variance 1
-        # norm_data[:,i] = (clipped_data[:,i] - mu) / sig
+    norm_data = remove_means(clipped_data, norm = False)
 
-    covar = np.cov(norm_data[:-dt,:].T)
-    u, s, vh = np.linalg.svd(covar)
-    covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
-    norm_data = norm_data @ covar_sqinv.T
-    norm_data = norm_data.astype(np.float32)
-
+    # Whiten data for best results
+    norm_data = whiten(norm_data)
     return norm_data
+
+
+def convolve(dataset):
+    """Set each dimension to have mean 0, variance 1 then convolves over the whole thing using a spline"""
+    norm_data = np.zeros(dataset.data.shape, dtype = np.float32)[start_cutoff:]
+    clipped_data = dataset[start_cutoff:, :] # smooth out the beginning
+    norm_data = remove_means(clipped_data, norm = False)
+
+    # Convolve
+    conv_data = conver(norm_data, kfunc = bspln3, support = dt)
+
+    # Whiten data for best results
+    conv_data = whiten(conv_data)
+    return conv_data
 
 
 def time_lag(dataset):
@@ -106,34 +125,15 @@ def time_lag(dataset):
     mean_free_data = dataset.data[start_cutoff:] # data that is mean-free, i.e., has mean 0
     data_shape = mean_free_data.shape
 
-    # get rid of the means
-    for i in range(data_shape[1]):
-        mu  = mean_free_data[:, i].mean()
-        mean_free_data[:, i] -= mu
+    mean_free_data = remove_means(mean_free_data, norm = False)
 
-    # Trying out convolution
-    support = dt//2
-    kernel = bspln3(np.arange(-2, 2, 4/support), support)
-    conv_data = np.zeros((mean_free_data.shape[0] - kernel.shape[0] + 1, mean_free_data.shape[1]), dtype=np.float32)
-    conv_data[:,0] = np.convolve(mean_free_data[:,0], kernel, mode = 'valid')
-    conv_data[:,1] = np.convolve(mean_free_data[:,1], kernel, mode = 'valid')
-    mean_free_data = conv_data
+    # Convolve
+    mean_free_data = conver(mean_free_data, kfunc = bspln3, support = dt)
 
     # Whiten the data
-    covar = np.cov(mean_free_data[:-dt,:].T)
-    u, s, vh = np.linalg.svd(covar)
-    covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
+    mean_free_data = whiten(mean_free_data)
 
-    mean_free_data = mean_free_data @ covar_sqinv.T
-
-    # # Optionally scramble the data
-    # # rotate = 0.5*np.array([[np.sqrt(2), np.sqrt(2)], [-np.sqrt(2), np.sqrt(2)]], dtype=np.float32)
-    # scramble = np.random.rand(2,2)
-    # mean_free_data = mean_free_data @ scramble.T
-    # mean_free_data[:,1] += 3*np.sqrt(np.abs(mean_free_data[:,0]))
-    # mean_free_data[:,1] += 3*np.sin(np.abs(mean_free_data[:,0]))
-    mean_free_data[:,1] += 3*np.cos(mean_free_data[:,0])
-
+    # mean_free_data = scrambler(x)
 
     # copy over data from dt timesteps later
     lag_data = np.zeros((mean_free_data.shape[0] - dt, 2 * mean_free_data.shape[1]), dtype = np.float32)
