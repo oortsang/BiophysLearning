@@ -40,7 +40,7 @@ class VAE(nn.Module):
                  encode_layers_means,
                  encode_layers_vars,
                  decode_layers_means,
-                 # decode_layers_vars,
+                 decode_layers_vars,
                  propagator_layers = None,
                  time_lagged = True,
                  variational = True,
@@ -48,7 +48,7 @@ class VAE(nn.Module):
                  discount  = 0,
                  data_type = np.float,
                  pref_dataset=None):         # for use with the testing functions
-        """Set up the variational autoencoder """
+        """Set up the variational autoencoder"""
         super(VAE, self).__init__() # initialization inherited from nn.Module
         self.always_random_sample = False # for the sampling process of latent variables
         # set up the encoder
@@ -67,12 +67,13 @@ class VAE(nn.Module):
         # set up the decoder
         self.out_lv_ests = nn.Parameter(torch.tensor([pxz_var_init]*in_dim, dtype = data_type))
         self.decode_net_means = nn.Sequential(*decode_layers_means)
-        # self.decode_net_vars  = nn.Sequential(*decode_layers_vars)
+        self.decode_net_vars  = nn.Sequential(*decode_layers_vars)
 
         self.variational  = variational
         self.time_lagged  = time_lagged
         self.pref_dataset = pref_dataset
         # quasi regularization factor...
+        self.varnet_weight = torch.tensor(-1, dtype=data_type)
         self.pxz_var_init = pxz_var_init
         self.discount  = discount
 
@@ -83,14 +84,14 @@ class VAE(nn.Module):
             self.encode_net_means = self.encode_net_means.float()
             self.encode_net_vars  = self.encode_net_vars.float()
             self.decode_net_means = self.decode_net_means.float()
-            # self.decode_net_vars  = self.decode_net_vars.float()
+            self.decode_net_vars  = self.decode_net_vars.float()
             if self.time_lagged and propagator_layers is not None:
                 self.propagator_net = self.propagator_net.float()
         else:
             self.encode_net_means = self.encode_net_means.double()
             self.encode_net_vars  = self.encode_net_vars.double()
             self.decode_net_means = self.decode_net_means.double()
-            # self.decode_net_vars  = self.decode_net_vars.double()
+            self.decode_net_vars  = self.decode_net_vars.double()
             if self.time_lagged and propagator_layers is not None:
                 self.propagator_net = self.propagator_net.double()
 
@@ -121,7 +122,7 @@ class VAE(nn.Module):
     def decode(self, z):
         """Takes a single z sample and attempts to reconstruct the inputs"""
         output_mu = self.decode_net_means(z)
-        output_lv = self.out_lv_ests # + self.decode_net_vars(z*0)
+        output_lv = self.out_lv_ests  + torch.clamp(self.varnet_weight, 0,1) * self.decode_net_vars(z)
         self.xp = (output_mu, output_lv)
         return self.xp
         # tmp = self.prelim_net(z)
@@ -152,15 +153,15 @@ class VAE(nn.Module):
             # it, which is where we get the square-loss for reconstruction error... see Doersch...
         else:
             fut_steps = 1
-            z_fut = z_sample
+            self.z_fut = z_sample
 
             all_means = torch.zeros((1+fut_steps, *(xp_dist[0].shape)), dtype=self.data_type)
             all_lvs   = torch.zeros((1+fut_steps, *(xp_dist[1].shape)), dtype=self.data_type)
             all_means[0], all_lvs[0] = xp_dist
 
             # propagate in latent space and decode
-            z_fut = self.propagator_net(z_fut)
-            all_means[1+0], all_lvs[1+0] = self.decode(z_fut)
+            self.z_fut = self.propagator_net(self.z_fut)
+            all_means[1+0], all_lvs[1+0] = self.decode(self.z_fut)
             return (fut_steps, all_means, all_lvs)
 
 
@@ -198,7 +199,13 @@ class VAE(nn.Module):
             kl_div = kl_div.sum()
         # pdb.set_trace()
         # return (self.rec_loss + self.pxz_var_init*kl_div) / pred_means.shape[0]
-        return (self.rec_loss + kl_div) / pred_means.shape[0]
+
+        # Regularization term to punish latent variables from being too far
+        if self.time_lagged and self.propagator_net is not None:
+            reg_loss = ((self.z_fut - self.encode(truth)[0])**2).sum()
+        else:
+            reg_loss = 0
+        return (self.rec_loss + kl_div + 0.1 * reg_loss) / pred_means.shape[0]
 
     def just_encode(self, x):
         """Runs data through just the encoder"""
@@ -301,9 +308,12 @@ class VAE(nn.Module):
             pic[..., 3] = 1
             plt.imshow(pic)
             plt.show()
+        elif mode == 'background' or mode == 'b':
+            plt.imshow(H, cmap = 'jet', alpha = 1)
+            plt.show()
         else:
             # initialize background image
-            plt.imshow(H, cmap = 'jet', alpha = 0.7)
+            plt.imshow(H, cmap = 'jet', alpha = 0.67)
             pic = np.zeros((*H.shape, 4))
             # overlay_color = np.array((0,0,0,0.0))
             opacity = 0.7
@@ -316,10 +326,10 @@ class VAE(nn.Module):
 
                 H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
                 H_rec -= H_rec.min()
-                H_rec /= H_rec.max()
-                pic = H_rec[..., np.newaxis] * overlay_color
+                H_rec /= 6 * H_rec.std()
+                pic = np.clip(H_rec[..., np.newaxis], 0, 1) * overlay_color
                 vis = H_rec != 0
-                pic[vis, 3] = opacity
+                pic[vis, 3] = np.clip(opacity, 0, 1)
 
             elif mode == 'grid rep' or mode == 'g':
                 # shows the projection of the space onto the latent space
@@ -328,9 +338,9 @@ class VAE(nn.Module):
                 grid_points = grid_points[0].clone().detach().numpy()
                 H_grid, _, _ = np.histogram2d(grid_points[:,0], grid_points[:,1], bins=(x_edges,y_edges))
                 H_grid -= H_grid.min()
-                H_grid /= H_grid.max()
-                pic = H_grid[..., np.newaxis] * overlay_color
+                H_grid /= 6 * H_grid.std()
+                pic = np.clip(H_grid[..., np.newaxis] * overlay_color, 0, 1)
                 vis = H_grid != 0
-                pic[vis, 3] = opacity
+                pic[vis, 3] = np.clip(opacity, 0, 1)
             plt.imshow(pic)
             plt.show()

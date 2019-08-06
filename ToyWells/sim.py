@@ -12,8 +12,8 @@ from multipoly import MultiPolynomial
 # kB = 1.380649e-23 # units of J/K
 # m / s * (a / m) * (s / ps)
 #         (1e-10)    (1e12)
-# kB = 1.380649e-3 # units of kg ã² / s² (+2*10)
-kB = 1.380649e-27 # units of kg ã² / ps² (-2*12??)
+# kB = 1.380649e-3 # units of kg ã² / s²
+kB = 1.380649e-27 # units of kg ã² / ps²
 tstep = 1 # ps
 
 class Particle():
@@ -98,6 +98,13 @@ RipCoeffs = np.array([[    0,     0,     0,     0,     0,     0,     1],
                       [    0,     0,     0,     0,     0,     0,     0],
                       [    1,    -6,    41,  -192,   544, -1536,  2304]])
 
+# -2*(x^2+y^2) + 1/8*(x^2+y^2)^2−1/4(x^3−3x*y^2)
+T3Coeffs = np.array([[ 0.   ,  0.   ,  0.   ,  0.   ,  0.125],
+                     [ 0.   ,  0.   ,  0.   ,  0.   , -0.25 ],
+                     [ 0.   ,  0.   ,  0.25 ,  0.   , -2.   ],
+                     [ 0.   ,  0.   ,  0.75 ,  0.   ,  0.   ],
+                     [ 0.125,  0.   , -2.   ,  0.   ,  0.   ]])
+
 # QCoeffs = np.zeros((5,5))
 # QCoeffs[4,4] = -1
 # QCoeffs[4,2] = 1
@@ -106,10 +113,10 @@ RipCoeffs = np.array([[    0,     0,     0,     0,     0,     0,     1],
 
 # QWell = MultiPolynomial(QCoeffs)
 # CromWell next
-# RWell = 0.001*MultiPolynomial(RipCoeffs)
+RWell = 0.001*MultiPolynomial(RipCoeffs)
 
 # if RWell is not None:
-#     xs = np.arange(-6, 6, 0.05)
+#     xs = np.arange(-5, 5, 0.05)
 #     Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))]).reshape((xs.shape[0], xs.shape[0], 2))
 #     xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
 #     outs = np.zeros(xxs.shape[0])
@@ -133,7 +140,8 @@ a = np.array(1e-25, dtype=np.double)
 HWell = a*MultiPolynomial([              1, 0, 0]) # harmonic
 # NWell = 5e-27*MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
 NWell = 1e-27*MultiPolynomial([1,  0, -40, 0, 0]) # not-so-narrow (double) well
-TWell = 1e-27*MultiPolynomial([1, 0, -50, 0, 625, 0, 0])
+TWell = 4e-28*MultiPolynomial([1, 0, -50, 0, 625, 0, 0]) # triple
+T3Well = 4e-27*MultiPolynomial(T3Coeffs) # triple
 # TWell = 4e-25*MultiPolynomial(TriCoeffs)
 RWell = 9e-28*MultiPolynomial(RipCoeffs)
 
@@ -148,12 +156,12 @@ RWell = 9e-28*MultiPolynomial(RipCoeffs)
 # plt.show()
 
 
-p1 = Particle(RWell, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(NWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 1
+npart = 2
 particles = [p1,
              p2,
              # p3,
@@ -163,7 +171,7 @@ particles = [p1,
              # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
              # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
-nsteps = 525000
+nsteps = 552500
 # nsteps = 225000
 dimensions = 0
 for i in range(npart):

@@ -76,7 +76,7 @@ model_param_fname = "data/model_parameters"
 variational = True
 time_lagged = True
 propagator  = True
-denoising   = False
+denoising   = True
 
 if time_lagged:
     sim_data = tla_sim_data
@@ -98,8 +98,8 @@ n_z    = 1 # dimensionality of latent space
 # the layers themselves
 encode_layers_means = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
-                       nn.Linear(h_size, h_size),
-                       nn.ReLU(),
+                       # nn.Linear(h_size, h_size),
+                       # nn.ReLU(),
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
@@ -114,17 +114,21 @@ encode_layers_vars  = [nn.Linear(in_dim, h_size),
 
 decode_layers_means = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
-                       nn.Linear(h_size, h_size),
-                       nn.ReLU(),
+                       # nn.Linear(h_size, h_size),
+                       # nn.ReLU(),
                        nn.Linear(h_size,in_dim)
                       ]
 
-# decode_layers_vars  = [nn.Linear(n_z, in_dim)
-#                       ]
-
-propagator_layers   = [nn.Linear(n_z, n_z+1),
+decode_layers_vars  = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
-                       nn.Linear(n_z+1, n_z)
+                       # nn.Linear(h_size, h_size),
+                       # nn.ReLU(),
+                       nn.Linear(h_size, in_dim)
+                      ]
+
+propagator_layers   = [nn.Linear(n_z, n_z+2),
+                       nn.ReLU(),
+                       nn.Linear(n_z+2, n_z)
                       ]
 if not propagator:
     propagator_layers = None
@@ -136,13 +140,13 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 3e-3           # learning rate
+lr = 5e-3           # learning rate
 weight_decay = 1e-6    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.005
+denoise_sig = 0.001
 
-pxz_var_init = -np.log(100) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -190,7 +194,7 @@ def trainer(model, optimizer, epoch, models, loss_array):
         optimizer (fxn): usually optim.Adam or optim.SGD
         epoch     (int): the number of the current epoch
         models  (list of VAEs): array to hold old models
-        loss_array (list of floats): list of loss values
+        loss_array  (list of floats): list of rec losses
     """
     epoch_fail = 0 # loss for the epoch # credit to xkcd for the variable name
 
@@ -200,11 +204,8 @@ def trainer(model, optimizer, epoch, models, loss_array):
     for b_idx, all_data in enumerate(train_loader):
         # erase old gradient info
         optimizer.zero_grad()
-
         # split up the data for the time-lagged autoencoder
         # and doesn't do anything if there's no time lag
-        # train_data = all_data if not time_lagged else all_data[:,:in_dim]
-        # goal_data  = all_data if not time_lagged else all_data[:,in_dim:]
         train_data = all_data[:,:in_dim]
         goal_data  = all_data[:,-in_dim:]
 
@@ -242,6 +243,8 @@ def trainer(model, optimizer, epoch, models, loss_array):
     models.append(vae_model) # save it in case the loss goes up later
     loss_array.append(epoch_fail/batch_count) # keep track of loss
 
+square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
+
 def test(model, dataset):
     """Takes a torch dataset/tensor as data and runs it through the model"""
     model.eval()
@@ -250,18 +253,18 @@ def test(model, dataset):
     answers = data[..., -in_dim:]
     fut_steps, out_means, out_lvs = model(inputs)
     if fut_steps == 0:
-        loss = model.vae_loss(out_means, out_lvs, answers).item()
-        rec_loss = model.rec_loss.item() / len(dataset)
+        loss = model.vae_loss(out_means[0], out_lvs[0], answers).item()
+        # rec_loss = model.rec_loss.item() / len(dataset)
+        rec_loss = square_loss(out_means[0], answers).item()
     else:
         loss = model.vae_loss(out_means[0], out_lvs[0], inputs)
-        rec_loss = model.rec_loss.item()/len(dataset) # reconstruction loss
+        # rec_loss = model.rec_loss.item()/len(dataset) # reconstruction loss
+        rec_loss = square_loss(out_means[0], inputs).item()
 
         loss += model.discount * model.vae_loss(out_means[1], out_lvs[1], answers)
-        rec_loss += model.rec_loss.item()/len(dataset) # reconstruction loss
+        # rec_loss += model.rec_loss.item()/len(dataset) # reconstruction loss
+        rec_loss = square_loss(out_means[1], answers).item()
     return loss, rec_loss
-
-square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
-
 
 ### Now for the actual running and comparison against other methods ###
 
@@ -309,7 +312,7 @@ vae_model = VAE(in_dim              = in_dim,
                 encode_layers_means = encode_layers_means,
                 encode_layers_vars  = encode_layers_vars,
                 decode_layers_means = decode_layers_means,
-                # decode_layers_vars  = decode_layers_vars,
+                decode_layers_vars  = decode_layers_vars,
                 propagator_layers   = propagator_layers,
                 time_lagged         = time_lagged,
                 variational         = variational,
@@ -332,6 +335,8 @@ else:
 models = [] # Stores old models in case an older one did better
 loss_array = []
 val_loss_array = []
+weight = 0.8
+wavg_loss_array = []
 start_time = time.time() # Keep track of run time
 
 # Now actually do the training
@@ -341,25 +346,31 @@ for epoch in range(n_epochs):
     print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
     # val_loss_array.append(val_loss)
     val_loss_array.append(val_rec_loss)
+    wavg_loss = weight       * np.array(val_loss_array[-1]) \
+                + (1-weight) * np.array(loss_array[-1])
+    wavg_loss_array.append(wavg_loss)
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
 
-    cutoff = 4
-    if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
+    if epoch == 1:
+        vae_model.varnet_weight += 1
+
+    cutoff = 3
+    # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
+    if epoch >= 1+cutoff and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
         print("Stopping training since the validation error has increased over the past 3 epochs.\n"
               "Replacing vae_model with the most recent model with lowest total validation loss.")
         break
 
 # idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.01, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error but biases more recent runs
-weight = 0.6
-idx = len(val_loss_array) - 1 \
-      - np.argmin((weight      * np.array(val_loss_array) \
-                  + (1-weight) *  np.array(loss_array))[::-1])
+
+idx = len(wavg_loss_array) - 1 \
+      - np.argmin(wavg_loss_array[::-1])
 vae_model = models[idx]
 print("Selecting the model from epoch", idx)
 
 vae_model.plot_test(test_set)
 
 vae_model.latent_plot2d(mode = 'r')
-vae_model.latent_plot2d(mode = 'w')
+vae_model.latent_plot2d(mode = 'd')
 vae_model.plot_test()

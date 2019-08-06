@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 
 start_cutoff = 0 # where the data begin
 dt = 50 # time lag in frames
-force_recompute = False # recompute the transformations even if there isn't a new simulation?
+force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
 # Class to hold the data we load
 class MyData(data.TensorDataset):
@@ -128,7 +128,7 @@ def time_lag(dataset):
     mean_free_data = remove_means(mean_free_data, norm = False)
 
     # Convolve
-    mean_free_data = conver(mean_free_data, kfunc = bspln3, support = dt)
+    mean_free_data = conver(mean_free_data, kfunc = bspln3, support = 3*dt)
 
     # Whiten the data
     mean_free_data = whiten(mean_free_data)

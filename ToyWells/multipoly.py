@@ -72,11 +72,6 @@ class MultiPolynomial():
         # convenient syntax like f(3, 4)
         return self.eval(x)
 
-    # def __add__(self, other):
-    #     if other.__class__ == self.__class__:
-    #         new_dim = min(other.coeffs.shape[-1], self.coeffs.shape[-1])
-
-
     def __rmul__(self, obj):
         if obj.__class__ != self.__class__:
             newcoeffs = obj * self.coeffs
@@ -86,10 +81,6 @@ class MultiPolynomial():
         if obj.__class__ != self.__class__:
             newcoeffs = obj * self.coeffs
             return MultiPolynomial(np.array(newcoeffs))
-        # else: # if we're multiplying by the same type
-        #     d1 = self.coeffs.shape[-1]
-        #     d2 = self.coeffs.shape[-1]
-        #     new_coeffs = np.array()
 
     def __repr__(self):
         ret_string = "MultiPolynomial object with %d variables; " % (self.dim)
@@ -97,6 +88,29 @@ class MultiPolynomial():
 
         return ret_string
 
+
+class PiecewisePolynomial():
+    """A holder for multidimensional polynomials that holds two polynomials (or Piecewise Polynomials): p1 for when c>=0 and p2 when c < 0"""
+    def __init__(self, p1, p2, c):
+        self.p1 = p1
+        self.c = c
+        self.p2 = p2
+
+    def eval(self, x):
+        """Returns the value of the function at the given point. The function is decided by the value of the c function (which could be a piecewise polynomial itself)"""
+        p = self.p1
+        if self.c(x) < 0:
+            p = self.p2
+        return p(x)
+
+    def grad(self):
+        """Return gradient as a piecewise function. Doesn't check for continuity."""
+        g1 = self.p1.grad()
+        g2 = self.p2.grad()
+        return self.__class__(g1, g2, self.c)
+
+    def __call__(self, x):
+        self.eval(x)
 # F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
 # H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree
 # J = MultiPolynomial([1,2,1]) # 1D Polynomial
