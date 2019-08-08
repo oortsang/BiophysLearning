@@ -55,7 +55,7 @@ import time
 from sklearn.decomposition import PCA
 
 # import from other modules in the folder
-from doubleSampleVAE import VAE
+from VAE import VAE
 from loader import nor_sim_data # normalized dimensions
 from loader import raw_sim_data
 from loader import pca_sim_data
