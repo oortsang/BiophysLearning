@@ -6,6 +6,7 @@ import h5py
 import pdb
 
 from multipoly import MultiPolynomial
+from multipoly import PiecewisePolynomial
 
 # Brownian motion / taking random steps
 
@@ -126,37 +127,38 @@ RWell = 0.001*MultiPolynomial(RipCoeffs)
 #     outs = np.clip(outs, 0,5)
 #     plt.imshow(outs,cmap='jet')
 #     plt.show()
-
-
-# WWell = MultiPolynomial([            0.5, 0, 0]) # wide
-# DWell = 5e-2*MultiPolynomial([5,   0, -1, 0,  0]) # double
-# SWell = MultiPolynomial([1,        0, -3, 0,  0]) # shallow?
-
-# OldNWell = MultiPolynomial([5,0, -0.1, 0, 0])
-# NewOldNWell = MultiPolynomial([80,0, -0.5, 0, 0]) # narrow (double) well
-
+height = 8e-26
+lwell = height * MultiPolynomial([1, 8, 16])
+mwell = height * MultiPolynomial([0.25, 0,  3])
+rwell = height * MultiPolynomial([1,-8, 16])
+# c  = MultiPolynomial([1,0])
+c1 = MultiPolynomial([-1,2])
+c2 = MultiPolynomial([-1,-2])
+PLWell = PiecewisePolynomial(mwell,  rwell, c1)
+PWell  = PiecewisePolynomial(lwell, PLWell, c2)
 
 a = np.array(1e-25, dtype=np.double)
-HWell = a*MultiPolynomial([              1, 0, 0]) # harmonic
-# NWell = 5e-27*MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
-NWell = 1e-27*MultiPolynomial([1,  0, -40, 0, 0]) # not-so-narrow (double) well
-TWell = 4e-28*MultiPolynomial([1, 0, -50, 0, 625, 0, 0]) # triple
-T3Well = 4e-27*MultiPolynomial(T3Coeffs) # triple
-# TWell = 4e-25*MultiPolynomial(TriCoeffs)
-RWell = 9e-28*MultiPolynomial(RipCoeffs)
+HWell = a * MultiPolynomial([              1, 0, 0]) # harmonic
+# NWell = 5e-27 * MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
+NWell = 1e-27 * MultiPolynomial([1,  0, -40, 0, 0]) # not-so-narrow (double) well
+
+T3Well = 4e-27 * MultiPolynomial(T3Coeffs) # triple
+# TWell = 4e-25 * MultiPolynomial(TriCoeffs)
+RWell = 9e-28 * MultiPolynomial(RipCoeffs)
+
 
 # (x+4)(x+5)*(x-4)(x-5)*x*x has 3 local minima
 # --> x^6 - 41 x^4 + 400 x^2
+TWell = 4e-28 * MultiPolynomial([1, 0, -50, 0, 625, 0, 0]) # triple
+
+xs = np.arange(-10, 10, 0.01)
+plt.plot(xs, NWell(xs))
+# plt.plot(xs, TWell(xs))
+plt.plot(xs, PWell(xs))
+plt.show()
 
 
-# xs = np.arange(-10, 10, 0.01)
-# plt.plot(xs, NWell(xs))
-# # plt.plot(xs, TWell(xs))
-# # plt.plot(xs, HWell(xs))
-# plt.show()
-
-
-p1 = Particle(NWell, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(PWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)
@@ -171,7 +173,7 @@ particles = [p1,
              # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
              # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
-nsteps = 552500
+nsteps = 352500
 # nsteps = 225000
 dimensions = 0
 for i in range(npart):

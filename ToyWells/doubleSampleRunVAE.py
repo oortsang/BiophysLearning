@@ -98,8 +98,8 @@ n_z    = 1 # dimensionality of latent space
 # the layers themselves
 encode_layers_means = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
@@ -107,15 +107,13 @@ encode_layers_vars  = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
                        # nn.Linear(h_size, h_size),
                        # nn.ReLU(),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
                        nn.Linear(h_size, n_z)
                       ]
 
 decode_layers_means = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
                        nn.Linear(h_size,in_dim)
                       ]
 
@@ -140,13 +138,13 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 5e-3           # learning rate
+lr = 1e-3           # learning rate
 weight_decay = 1e-6    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.001
+denoise_sig = 0.005
 
-pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(400) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -254,16 +252,16 @@ def test(model, dataset):
     fut_steps, out_means, out_lvs = model(inputs)
     if fut_steps == 0:
         loss = model.vae_loss(out_means[0], out_lvs[0], answers).item()
-        # rec_loss = model.rec_loss.item() / len(dataset)
-        rec_loss = square_loss(out_means[0], answers).item()
+        rec_loss = model.rec_loss.item() / len(dataset)
+        # rec_loss = square_loss(out_means[0], answers).item()
     else:
         loss = model.vae_loss(out_means[0], out_lvs[0], inputs)
-        # rec_loss = model.rec_loss.item()/len(dataset) # reconstruction loss
-        rec_loss = square_loss(out_means[0], inputs).item()
+        rec_loss = model.rec_loss.item()/len(dataset) # reconstruction loss
+        # rec_loss = square_loss(out_means[0], inputs).item()
 
         loss += model.discount * model.vae_loss(out_means[1], out_lvs[1], answers)
-        # rec_loss += model.rec_loss.item()/len(dataset) # reconstruction loss
-        rec_loss = square_loss(out_means[1], answers).item()
+        rec_loss += model.rec_loss.item()/len(dataset) # reconstruction loss
+        # rec_loss = square_loss(out_means[1], answers).item()
     return loss, rec_loss
 
 ### Now for the actual running and comparison against other methods ###
@@ -349,15 +347,18 @@ for epoch in range(n_epochs):
     wavg_loss = weight       * np.array(val_loss_array[-1]) \
                 + (1-weight) * np.array(loss_array[-1])
     wavg_loss_array.append(wavg_loss)
+    train_outs = vae_model.run_data(train_set)
+    true_train_mse = square_loss(train_set.data[:,:in_dim], train_outs)
+    print("True Training MSE: %f" % true_train_mse)
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
 
-    if epoch == 1:
-        vae_model.varnet_weight += 1
+    # if epoch == 5:
+    #     vae_model.varnet_weight += 1
 
     cutoff = 3
     # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
-    if epoch >= 1+cutoff and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
+    if epoch >= 5 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
         print("Stopping training since the validation error has increased over the past 3 epochs.\n"
               "Replacing vae_model with the most recent model with lowest total validation loss.")
         break

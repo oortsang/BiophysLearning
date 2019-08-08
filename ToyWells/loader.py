@@ -11,10 +11,10 @@ from torch.utils import data
 from sklearn.decomposition import PCA
 
 start_cutoff = 0 # where the data begin
-dt = 50 # time lag in frames
+dt = 80 # time lag in frames
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
-# Class to hold the data we load
+########## Class to hold the data we load ##########
 class MyData(data.TensorDataset):
     def __init__(self, fname=None, transform = None, data = None):
         if fname is not None:
@@ -41,9 +41,10 @@ class MyData(data.TensorDataset):
         new_set = MyData(data = self.data[:][np.arange(start, stop, skip)])
         return new_set
 
-
+##########  Helper functions  ##########
 
 def remove_means(x, norm = False):
+    """Subtract out the dimension-wise means"""
     for i in range(x.shape[1]):
         mu       = x[:, i].mean()
         x[:, i] -= mu
@@ -55,6 +56,8 @@ def remove_means(x, norm = False):
 
 def bspln3(x, support):
     """Interpolating kernel """
+    # But an interpolating kernel is not desired here...
+    # want it to blur and lose some of the noise
     ret = np.zeros(x.shape[0])
     for i in range(x.shape[0]):
         xx = np.abs(x[i])/(2*support)
@@ -95,6 +98,9 @@ def scrambler(x):
     return x
 
 
+
+##########  The actual production of new dataset objects  ##########
+
 def normalize(dataset):
     """Set each dimension to have mean 0, variance 1; also clips the first 500 datapoints because they """
     norm_data = np.zeros(dataset.data.shape, dtype = np.float32)[start_cutoff:]
@@ -133,7 +139,8 @@ def time_lag(dataset):
     # Whiten the data
     mean_free_data = whiten(mean_free_data)
 
-    # mean_free_data = scrambler(x)
+    mean_free_data = scrambler(mean_free_data)
+    mean_free_data = whiten(mean_free_data)
 
     # copy over data from dt timesteps later
     lag_data = np.zeros((mean_free_data.shape[0] - dt, 2 * mean_free_data.shape[1]), dtype = np.float32)
@@ -147,6 +154,9 @@ def pcaify(dataset):
     pca_latent = pca.fit_transform(dataset.data[start_cutoff:])
     return pca_latent
 
+
+########## Setting up the files ##########
+
 rawfile = "data/SimOutput.h5"
 norfile = "data/NormalizedSimOutput.h5"
 pcafile = "data/PCANormdSimOutput.h5"
@@ -159,6 +169,7 @@ files = [(norfile, normalize),
          (tlafile, time_lag),
          (confile, convolve)]
 
+# Update files when necessary
 for file_name, fxn in files:
     needs_recompute = False
     if os.path.getmtime(os.path.basename(__file__)) > os.path.getmtime(file_name):
@@ -180,6 +191,7 @@ for file_name, fxn in files:
 
 # Accessible from other files by "from loader import *_data"
 
+# load the files we just saved to disk
 # raw_sim_data = MyData(rawfile) # already loaded
 nor_sim_data = MyData(norfile)
 pca_sim_data = MyData(pcafile)

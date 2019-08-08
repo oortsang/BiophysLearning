@@ -85,7 +85,6 @@ class MultiPolynomial():
     def __repr__(self):
         ret_string = "MultiPolynomial object with %d variables; " % (self.dim)
         ret_string += "returns a " + ("vector" if self.return_vector else "scalar") + "\n"
-
         return ret_string
 
 
@@ -95,13 +94,24 @@ class PiecewisePolynomial():
         self.p1 = p1
         self.c = c
         self.p2 = p2
+        if p1.dim != p2.dim:
+            print("Uh oh, the two polynomials you gave me have different dimensions...")
+        self.dim = p1.dim
 
     def eval(self, x):
         """Returns the value of the function at the given point. The function is decided by the value of the c function (which could be a piecewise polynomial itself)"""
-        p = self.p1
-        if self.c(x) < 0:
-            p = self.p2
-        return p(x)
+        xx = np.array(x)
+        if xx.ndim >= 1 and xx.shape[0] > self.p1.dim:
+            val = np.zeros(xx.shape, dtype = np.double)
+            p1_idcs = self.c(x) >= 0
+            p2_idcs = np.logical_not(p1_idcs)
+            if np.any(p1_idcs):
+                val[p1_idcs] = self.p1(xx[p1_idcs])
+            if np.any(p2_idcs):
+                val[p2_idcs] = self.p2(xx[p2_idcs])
+        else:
+            val = (self.p1 if self.c(x) >= 0 else self.p2) (x)
+        return val
 
     def grad(self):
         """Return gradient as a piecewise function. Doesn't check for continuity."""
@@ -110,7 +120,26 @@ class PiecewisePolynomial():
         return self.__class__(g1, g2, self.c)
 
     def __call__(self, x):
-        self.eval(x)
+        return self.eval(x)
+
+    def __mul__(self, a):
+        return self.__class__(a*self.p1, a*self.p2, self.c)
+
+    def __rmul__(self, a):
+        return self.__class__(a*self.p1, a*self.p2, self.c)
+
+    def __repr__(self):
+        return "Piecewise Polynomial"
+
+# p1 = MultiPolynomial([1, -4, 4])
+# p2 = MultiPolynomial([1,  4, 4])
+# c  = MultiPolynomial([1,0])
+# pp = PiecewisePolynomial(p1, p2, c)
+# xs = np.arange(-4,4,0.1)
+# ys = pp(xs)
+# plt.plot(xs, ys)
+# plt.show()
+
 # F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
 # H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree
 # J = MultiPolynomial([1,2,1]) # 1D Polynomial

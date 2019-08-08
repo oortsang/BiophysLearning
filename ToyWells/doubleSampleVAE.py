@@ -173,18 +173,13 @@ class VAE(nn.Module):
         #
         # -log p(x|z) = (x-Dm(z))**2/(2Ds(z)) + log Ds(z) + 0.5*log(2 pi)
 
-
         if not self.variational:
             self.rec_loss = torch.sum((pred - truth)**2) # maybe replace with a pytorch function
         else:
-            # pred_lvs *= 0
-            # pred_lvs += -2.3
-            # pdb.set_trace()
             # self.rec_loss = 0.5*(pred_lvs+torch.exp(-pred_lvs)*(pred_means-truth)**2).sum(1)
             self.rec_loss = 0.5*(np.log(2*np.pi) + pred_lvs
-                                 + torch.exp(-pred_lvs)*(pred_means-truth)**2).sum(1)
-            self.rec_loss = self.rec_loss.sum()
-
+                                 + torch.exp(-pred_lvs)*(pred_means-truth)**2).sum()
+            # self.rec_loss = self.rec_loss.sum()
 
         # KL[q(z|x) || p(z)] - Kullback-Leibler divergence
         # E [ log(q(z|x)) - log(p(z)) ] using Q for the weighting on the expected value
@@ -195,17 +190,18 @@ class VAE(nn.Module):
         # but probably in some paper (2-3 lines from Doersch + diagonal covariance matrix assn.)
         kl_div = 0
         if self.variational:
-            kl_div = 0.5 * (self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var)).sum(1)
-            kl_div = kl_div.sum()
-        # pdb.set_trace()
+            kl_div = 0.5 * (self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var)).sum()
+            # kl_div = kl_div.sum()
+
         # return (self.rec_loss + self.pxz_var_init*kl_div) / pred_means.shape[0]
 
-        # Regularization term to punish latent variables from being too far
-        if self.time_lagged and self.propagator_net is not None:
-            reg_loss = ((self.z_fut - self.encode(truth)[0])**2).sum()
-        else:
-            reg_loss = 0
-        return (self.rec_loss + kl_div + 0.1 * reg_loss) / pred_means.shape[0]
+        # # Regularization term to punish latent variables from being too far
+        # if self.time_lagged and self.propagator_net is not None:
+        #     reg_loss = ((self.z_fut - self.encode(truth)[0])**2).sum()
+        # else:
+        #     reg_loss = 0
+        # return (self.rec_loss + kl_div + 0.1 * reg_loss) / pred_means.shape[0]
+        return (self.rec_loss + kl_div) / pred_means.shape[0]
 
     def just_encode(self, x):
         """Runs data through just the encoder"""
@@ -222,8 +218,8 @@ class VAE(nn.Module):
                 return None
             data = self.pref_dataset
         self.eval()
-        data = torchtensor(data, dtype=self.data_type)
-        _, recon = self(data)
+        data = torch.tensor(data, dtype=self.data_type)
+        _, recon, _ = self(data)
         return recon[0].detach().numpy()
 
     def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0):
@@ -263,7 +259,7 @@ class VAE(nn.Module):
         if ret:
             return outputs, latents
 
-    def latent_plot2d(self, mode='reconstruction', data=None, bins = 30):
+    def latent_plot2d(self, mode='reconstruction', data=None, bins = 60):
         """Note that this is only designed for 2D spaces
 
         Arguments:
@@ -280,7 +276,8 @@ class VAE(nn.Module):
         H, x_edges, y_edges = np.histogram2d(data[:,0], data[:,1], bins = bins)
         x_pts = 0.5 * (x_edges[:-1] + x_edges[1:])
         y_pts = 0.5 * (y_edges[:-1] + y_edges[1:])
-        grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
+        # grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
+        grid = np.transpose([np.tile(y_pts, x_pts.shape[0]), np.repeat(x_pts, y_pts.shape[0])])
         grid = torch.tensor(grid, dtype = self.data_type)
 
         overlay_color = np.array((1,0.56, 0, 0))*0.65
