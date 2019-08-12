@@ -143,13 +143,16 @@ class VAE(nn.Module):
         z_dist    = self.encode(x)        # 1. Encode
         z_sample  = self.sample(*z_dist)  # 2. Sample
         xp_dist   = self.decode(z_sample) # 3. Decode
-        # x_decoded = self.sample(*xp_dist) # 4. Sample
+        x_decoded = self.sample(*xp_dist) # 4. Sample
+
+        if self.always_random_sample and not self.training:
+            xp_dist = (x_decoded, xp_dist[1])
 
         # import pdb; pdb.set_trace()
         if not self.time_lagged or self.propagator_net is None:
             return (0, xp_dist[0][np.newaxis], xp_dist[1][np.newaxis])
             # Decoding returns the max-likelihood option rather than a full prob dist
-            # which seems to be desired behavior.. There's an implicit Gaussian centered around
+            # which seems to be desired behavior.. There's a Gaussian centered around
             # it, which is where we get the square-loss for reconstruction error... see Doersch...
         else:
             fut_steps = 1
@@ -200,7 +203,7 @@ class VAE(nn.Module):
         #     reg_loss = ((self.z_fut - self.encode(truth)[0])**2).sum()
         # else:
         #     reg_loss = 0
-        # return (self.rec_loss + kl_div + 0.1 * reg_loss) / pred_means.shape[0]
+        # return (self.rec_loss + kl_div + 0.01 * reg_loss) / pred_means.shape[0]
         return (self.rec_loss + kl_div) / pred_means.shape[0]
 
     def just_encode(self, x):
@@ -259,7 +262,7 @@ class VAE(nn.Module):
         if ret:
             return outputs, latents
 
-    def latent_plot2d(self, mode='reconstruction', data=None, bins = 60):
+    def latent_plot2d(self, mode='reconstruction', data=None, bins = 60, save = None):
         """Note that this is only designed for 2D spaces
 
         Arguments:
@@ -280,7 +283,11 @@ class VAE(nn.Module):
         grid = np.transpose([np.tile(y_pts, x_pts.shape[0]), np.repeat(x_pts, y_pts.shape[0])])
         grid = torch.tensor(grid, dtype = self.data_type)
 
-        overlay_color = np.array((1,0.56, 0, 0))*0.65
+        overlay_color = np.array((1,0.65, 0, 0))*0.7 # orange
+        overlay_cloud = np.array((1,0.6,0.1, 0))*0.5 # also orange
+        # overlay_cloud = np.array((0,0.2,0.13, 0))* 1.75 # green
+        # overlay_color = np.array((1,0.56, 0, 0))*0.65
+        # inv_overlay_color = np.array((1-0.65,1-0.56*0.65, 1, 0))
 
         if mode == 'latent dist' or mode == 'd':
             # plot the distribution of latent variables in latent space
@@ -312,12 +319,16 @@ class VAE(nn.Module):
             # initialize background image
             plt.imshow(H, cmap = 'jet', alpha = 0.67)
             pic = np.zeros((*H.shape, 4))
-            # overlay_color = np.array((0,0,0,0.0))
             opacity = 0.7
 
             # plot the requested features
             if mode == 'reconstruction' or mode == 'r':
                 # attempts to reconstruct the original data
+                prev_sample = self.always_random_sample
+                prev_train = self.training
+                self.always_random_sample = False
+                self.eval()
+
                 _, rec_points, _ = self(torch.tensor(data, dtype=self.data_type))
                 rec_points = rec_points[0].clone().detach().numpy()
 
@@ -327,6 +338,48 @@ class VAE(nn.Module):
                 pic = np.clip(H_rec[..., np.newaxis], 0, 1) * overlay_color
                 vis = H_rec != 0
                 pic[vis, 3] = np.clip(opacity, 0, 1)
+
+                self.always_random_sample = prev_sample
+                self.training = prev_train
+
+            elif mode == 'random reconstruction' or mode == 'rr':
+                # attempts to reconstruct the original data
+                prev_sample = self.always_random_sample
+                prev_train = self.training
+                self.always_random_sample = True
+                self.train()
+                
+                # Get a cloud of points
+                _, rec_points, _ = self(torch.tensor(data, dtype=self.data_type))
+                rec_points = rec_points[0].clone().detach().numpy()
+
+                H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
+                H_rec -= H_rec.min()
+                H_rec /= 6 * H_rec.std()
+                H_clipped = np.clip(H_rec[..., np.newaxis], 0, 1)
+                # vis = H_rec >= 0.05 * H_rec.std()
+                pic = H_clipped * overlay_cloud
+
+                # manage opacity
+                pic[..., 3] = np.sqrt(np.clip(H_rec+0.05, 0, 0.85))
+
+                # Get the lines
+                self.always_random_sample = False
+                self.eval()
+                _, rec_points, _ = self(torch.tensor(data, dtype=self.data_type))
+                rec_points = rec_points[0].clone().detach().numpy()
+                H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
+                H_rec -= H_rec.min()
+                H_rec /= 6 * H_rec.std()
+                line = np.clip(H_rec[..., np.newaxis] * 1, 0, 1) * overlay_color
+                vis = H_rec != 0
+                pic[vis,:3] = line[vis,:3]
+                pic[vis, 3] = 0.85
+                pic = np.clip(pic, 0, 1)
+                
+                # reset state
+                self.always_random_sample = prev_sample
+                self.training = prev_train
 
             elif mode == 'grid rep' or mode == 'g':
                 # shows the projection of the space onto the latent space

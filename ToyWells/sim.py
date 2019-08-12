@@ -106,6 +106,8 @@ T3Coeffs = np.array([[ 0.   ,  0.   ,  0.   ,  0.   ,  0.125],
                      [ 0.   ,  0.   ,  0.75 ,  0.   ,  0.   ],
                      [ 0.125,  0.   , -2.   ,  0.   ,  0.   ]])
 
+
+
 # QCoeffs = np.zeros((5,5))
 # QCoeffs[4,4] = -1
 # QCoeffs[4,2] = 1
@@ -137,6 +139,21 @@ c2 = MultiPolynomial([-1,-2])
 PLWell = PiecewisePolynomial(mwell,  rwell, c1)
 PWell  = PiecewisePolynomial(lwell, PLWell, c2)
 
+# Piecewise potential landscape with three wells in 2D
+scale = 4e-26
+w1 = scale * MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
+w2 = scale * MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]]) 
+# w3 = scale * MultiPolynomial([[0, 0, 0.5], [0, 0, 0], [0.5, -4, -48]])
+w3 = scale * 0.75 * MultiPolynomial([[0, 0, 0.75], [0, 0, 0], [0.75, -6, -72]])
+c1  = MultiPolynomial([[0,1],[0,0]])
+c21 = MultiPolynomial([[0,-1],[2,5]])
+c22 = MultiPolynomial([[0,1],[2, 5]])
+c2c = MultiPolynomial([[0,1],[0,0]])
+c2 = PiecewisePolynomial(c21, c22, c2c)
+p1  = PiecewisePolynomial(w1, w2, c1)
+p_trip  = PiecewisePolynomial(w3, p1, c2)
+
+
 a = np.array(1e-25, dtype=np.double)
 HWell = a * MultiPolynomial([              1, 0, 0]) # harmonic
 # NWell = 5e-27 * MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
@@ -158,12 +175,12 @@ plt.plot(xs, PWell(xs))
 plt.show()
 
 
-p1 = Particle(PWell, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(p_trip, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 2
+npart = 1
 particles = [p1,
              p2,
              # p3,
@@ -173,8 +190,8 @@ particles = [p1,
              # Particle(MultiPolynomial([0.5, 1, 4]), pos = -2, nsize = 1),          # 6
              # Particle(MultiPolynomial([2, 13, 0]), pos = -0.1, nsize = 1),         # 7
             ][:npart]
-nsteps = 352500
-# nsteps = 225000
+# nsteps = 352500
+nsteps = 135000
 dimensions = 0
 for i in range(npart):
     dimensions += particles[i].dim

@@ -11,7 +11,7 @@ from torch.utils import data
 from sklearn.decomposition import PCA
 
 start_cutoff = 0 # where the data begin
-dt = 80 # time lag in frames
+dt = 50 # time lag in frames
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
 ########## Class to hold the data we load ##########
@@ -54,13 +54,21 @@ def remove_means(x, norm = False):
             x[:, i] /= sig
     return x
 
+
+def gaussian_blur(x, support):
+    ret = np.zeros(x.shape[0])
+    xx = np.abs(x)
+    # assume stdev 1
+    factors = np.exp(-xx*xx/2)
+    return factors/factors.sum()
+
 def bspln3(x, support):
     """Interpolating kernel """
     # But an interpolating kernel is not desired here...
     # want it to blur and lose some of the noise
     ret = np.zeros(x.shape[0])
     for i in range(x.shape[0]):
-        xx = np.abs(x[i])/(2*support)
+        xx = np.abs(x[i]) # rescale to fit the equation
         if xx >= 2:
             ret[i] = 0
         elif xx >= 1:
@@ -79,7 +87,7 @@ def whiten(x):
     xw.astype(x.dtype)
     return xw
 
-def conver(x, kfunc = bspln3, support = dt):
+def conver(x, kfunc = gaussian_blur, support = dt//5):
     """Performs the convolution itself on the data"""
     kernel = kfunc(np.arange(-2, 2, 4/support), support)
     conv_data = np.zeros((x.shape[0] - kernel.shape[0] + 1, x.shape[1]), dtype = x.dtype)
@@ -119,7 +127,8 @@ def convolve(dataset):
     norm_data = remove_means(clipped_data, norm = False)
 
     # Convolve
-    conv_data = conver(norm_data, kfunc = bspln3, support = dt)
+    conv_data = conver(norm_data)
+    # conv_data = conver(norm_data, support = dt)
 
     # Whiten data for best results
     conv_data = whiten(conv_data)
@@ -134,13 +143,13 @@ def time_lag(dataset):
     mean_free_data = remove_means(mean_free_data, norm = False)
 
     # Convolve
-    mean_free_data = conver(mean_free_data, kfunc = bspln3, support = 3*dt)
+    mean_free_data = conver(mean_free_data)
 
     # Whiten the data
     mean_free_data = whiten(mean_free_data)
 
-    mean_free_data = scrambler(mean_free_data)
-    mean_free_data = whiten(mean_free_data)
+    # mean_free_data = scrambler(mean_free_data)
+    # mean_free_data = whiten(mean_free_data)
 
     # copy over data from dt timesteps later
     lag_data = np.zeros((mean_free_data.shape[0] - dt, 2 * mean_free_data.shape[1]), dtype = np.float32)

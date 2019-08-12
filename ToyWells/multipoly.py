@@ -1,6 +1,7 @@
 import pdb
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 # Polynomials in multiple variables
 # for clean manipulation of potential wells
@@ -15,6 +16,8 @@ class MultiPolynomial():
             self.dim = self.coeffs.ndim
         else:
             self.dim = 1
+
+        self.return_dim = self.coeffs.shape[0] if return_vector else 1
 
     def eval(self, x):
         x = np.array(x)
@@ -97,20 +100,32 @@ class PiecewisePolynomial():
         if p1.dim != p2.dim:
             print("Uh oh, the two polynomials you gave me have different dimensions...")
         self.dim = p1.dim
+        self.return_dim = self.p1.return_dim
 
     def eval(self, x):
         """Returns the value of the function at the given point. The function is decided by the value of the c function (which could be a piecewise polynomial itself)"""
         xx = np.array(x)
-        if xx.ndim >= 1 and xx.shape[0] > self.p1.dim:
-            val = np.zeros(xx.shape, dtype = np.double)
+        # if xx.ndim >= 1 and xx.shape[0] > self.p1.dim:
+        # if xx.ndim > 1 or (xx.ndim == 1 and xx.shape[0] > self.p1.dim):
+        # pdb.set_trace()
+        if xx.ndim > 1 or (xx.ndim == 1 and self.p1.dim == 1):
+            # val_shape = xx.shape[:-1] if self.p1.return_dim == 1  else (*xx.shape[:-1], return_dim)
+            val_shape = (*xx.shape[:-1], self.p1.return_dim)
+            if xx.ndim == 1 or self.p1.return_dim == 1:
+                val_shape = (x.shape[0], )
+            val = np.zeros(val_shape, dtype = np.double)
             p1_idcs = self.c(x) >= 0
             p2_idcs = np.logical_not(p1_idcs)
+            if xx.ndim == 1 or self.p1.return_dim == 1:
+                p1_idcs = p1_idcs.flatten()
+                p2_idcs = p2_idcs.flatten()
+
             if np.any(p1_idcs):
                 val[p1_idcs] = self.p1(xx[p1_idcs])
             if np.any(p2_idcs):
                 val[p2_idcs] = self.p2(xx[p2_idcs])
         else:
-            val = (self.p1 if self.c(x) >= 0 else self.p2) (x)
+            val = (self.p1 if self.c(xx) >= 0 else self.p2) (xx)
         return val
 
     def grad(self):
@@ -139,6 +154,30 @@ class PiecewisePolynomial():
 # ys = pp(xs)
 # plt.plot(xs, ys)
 # plt.show()
+
+w1 = MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
+w2 = MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]]) 
+w3 = MultiPolynomial([[0, 0, 0.75], [0, 0, 0], [0.75, -6, -72]])
+c1  = MultiPolynomial([[0,1],[0,0]])
+
+# c2  = MultiPolynomial([[0,0],[1,-2]])
+c21 = MultiPolynomial([[0,-1],[2,5]])
+c22 = MultiPolynomial([[0,1],[2, 5]])
+c2c = MultiPolynomial([[0,1],[0,0]])
+c2 = PiecewisePolynomial(c21, c22, c2c)
+
+p1  = PiecewisePolynomial(w1, w2, c1)
+p   = PiecewisePolynomial(w3, p1, c2)
+
+xs1d = np.arange(-12, 12, 0.5)
+xs = np.transpose([np.tile(xs1d, xs1d.shape[0]), np.repeat(xs1d, xs1d.shape[0])]).reshape((xs1d.shape[0], xs1d.shape[0], 2))
+zs = p(xs.reshape(xs.shape[0]*xs.shape[1], xs.shape[2])).reshape(xs.shape[:-1])
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(xs[:,:,0], xs[:,:,1], zs, cmap = 'jet')
+# ax.plot_wireframe(xs[:,:,0], xs[:,:,1], zs)
+plt.show()
 
 # F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
 # H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree

@@ -53,6 +53,7 @@ from torch.utils.data import Subset
 import matplotlib.pyplot as plt
 import time
 from sklearn.decomposition import PCA
+import copy
 
 # import from other modules in the folder
 from VAE import VAE
@@ -98,8 +99,8 @@ n_z    = 1 # dimensionality of latent space
 # the layers themselves
 encode_layers_means = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
-                       nn.Linear(h_size, h_size),
-                       nn.ReLU(),
+                       # nn.Linear(h_size, h_size),
+                       # nn.ReLU(),
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
@@ -112,8 +113,8 @@ encode_layers_vars  = [nn.Linear(in_dim, h_size),
 
 decode_layers_means = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
-                       nn.Linear(h_size, h_size),
-                       nn.ReLU(),
+                       # nn.Linear(h_size, h_size),
+                       # nn.ReLU(),
                        nn.Linear(h_size,in_dim)
                       ]
 
@@ -142,9 +143,9 @@ lr = 1e-3           # learning rate
 weight_decay = 1e-6    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.005
+denoise_sig = 0.001
 
-pxz_var_init = -np.log(400) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(100) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -235,10 +236,11 @@ def trainer(model, optimizer, epoch, models, loss_array):
         batch_count += 1
         if b_idx % 125 == 0:
             print("Train Epoch %d, \tBatch index %d:   \tLoss: %f\tRecLoss: %f" % (epoch, b_idx, loss_scalar, rec_loss))
+            models.append(copy.deepcopy(vae_model.state_dict()))
     print("Epoch %d has an average reconstruction loss of  %f" % (epoch, epoch_fail/batch_count))
     # different from the reconstruction loss for the most up-to-date model
     # epoch_loss = ((outputs - sim_data.data)**2).sum(1).mean() # this is pretty unstable for some reason
-    models.append(vae_model) # save it in case the loss goes up later
+    # models.append(copy.deepcopy(vae_model.state_dict()))
     loss_array.append(epoch_fail/batch_count) # keep track of loss
 
 square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
@@ -353,8 +355,8 @@ for epoch in range(n_epochs):
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
 
-    # if epoch == 5:
-    #     vae_model.varnet_weight += 1
+    if epoch == 5:
+        vae_model.varnet_weight += 1
 
     cutoff = 3
     # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
@@ -367,7 +369,7 @@ for epoch in range(n_epochs):
 
 idx = len(wavg_loss_array) - 1 \
       - np.argmin(wavg_loss_array[::-1])
-vae_model = models[idx]
+_ = vae_model.load_state_dict(models[idx])
 print("Selecting the model from epoch", idx)
 
 vae_model.plot_test(test_set)
@@ -375,3 +377,11 @@ vae_model.plot_test(test_set)
 vae_model.latent_plot2d(mode = 'r')
 vae_model.latent_plot2d(mode = 'd')
 vae_model.plot_test()
+
+if True:
+    for i in range(len(models)):
+        print(i)
+        _ = vae_model.load_state_dict(models[i])
+        # vae_model.latent_plot2d('rr', save = "pics/blah%d.png" % i)
+        vae_model.latent_plot2d('rr', save = "pics/blah%d.png" % i)
+    _ = vae_model.load_state_dict(models[idx])
