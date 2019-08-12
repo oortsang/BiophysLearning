@@ -93,7 +93,7 @@ in_dim = sim_data.data[:].shape[1]
 if time_lagged:
     in_dim //= 2
 
-h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
+h_size = in_dim + 1 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
 
 # the layers themselves
@@ -236,11 +236,11 @@ def trainer(model, optimizer, epoch, models, loss_array):
         batch_count += 1
         if b_idx % 125 == 0:
             print("Train Epoch %d, \tBatch index %d:   \tLoss: %f\tRecLoss: %f" % (epoch, b_idx, loss_scalar, rec_loss))
-            models.append(copy.deepcopy(vae_model.state_dict()))
+            # models.append(copy.deepcopy(vae_model.state_dict()))
     print("Epoch %d has an average reconstruction loss of  %f" % (epoch, epoch_fail/batch_count))
     # different from the reconstruction loss for the most up-to-date model
     # epoch_loss = ((outputs - sim_data.data)**2).sum(1).mean() # this is pretty unstable for some reason
-    # models.append(copy.deepcopy(vae_model.state_dict()))
+    models.append(copy.deepcopy(vae_model.state_dict()))
     loss_array.append(epoch_fail/batch_count) # keep track of loss
 
 square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
@@ -355,7 +355,7 @@ for epoch in range(n_epochs):
     duration = time.time() - start_time
     print("%f seconds have elapsed since the training began\n" % duration)
 
-    if epoch == 5:
+    if epoch == 3:
         vae_model.varnet_weight += 1
 
     cutoff = 3
@@ -382,6 +382,5 @@ if True:
     for i in range(len(models)):
         print(i)
         _ = vae_model.load_state_dict(models[i])
-        # vae_model.latent_plot2d('rr', save = "pics/blah%d.png" % i)
-        vae_model.latent_plot2d('rr', save = "pics/blah%d.png" % i)
+        vae_model.latent_plot2d('rr')
     _ = vae_model.load_state_dict(models[idx])

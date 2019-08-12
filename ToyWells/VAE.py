@@ -262,7 +262,7 @@ class VAE(nn.Module):
         if ret:
             return outputs, latents
 
-    def latent_plot2d(self, mode='reconstruction', data=None, bins = 60, save = None):
+    def latent_plot2d(self, mode='reconstruction', data=None, bins = 60, save_name = None, show = True):
         """Note that this is only designed for 2D spaces
 
         Arguments:
@@ -295,14 +295,20 @@ class VAE(nn.Module):
             Hlat, xedges = np.histogram(latents, bins=bins)
             xpts = 0.5*(xedges[1:] + xedges[:-1])
             plt.plot(xpts, Hlat)
-            plt.show()
+            if save_name is not None:
+                plt.savefig(save_name)
+            if show:
+                plt.show()
         elif mode == 'latent potential well' or mode == 'w':
             # plot potential well in latent space
             latents = self.just_encode(torch.tensor(data, dtype=self.data_type)).flatten() # get the mean score for each point on the grid
             Hlat, xedges = np.histogram(latents, bins=bins)
             xpts = 0.5*(xedges[1:] + xedges[:-1])
             plt.plot(xpts, -np.log(Hlat+0.001)) # put a little cushion in case of a 0
-            plt.show()
+            if save_name is not None:
+                plt.savefig(save_name)
+            if show:
+                plt.show()
         elif mode == 'latent val' or mode == 'l':
             # get the mean score for each point on the grid
             latents = self.just_encode(grid).reshape(bins, bins)
@@ -311,10 +317,16 @@ class VAE(nn.Module):
             pic = latents[..., np.newaxis] * overlay_color *2
             pic[..., 3] = 1
             plt.imshow(pic)
-            plt.show()
+            if save_name is not None:
+                plt.savefig(save_name)
+            if show:
+                plt.show()
         elif mode == 'background' or mode == 'b':
             plt.imshow(H, cmap = 'jet', alpha = 1)
-            plt.show()
+            if save_name is not None:
+                plt.savefig(save_name)
+            if show:
+                plt.show()
         else:
             # initialize background image
             plt.imshow(H, cmap = 'jet', alpha = 0.67)
@@ -357,11 +369,11 @@ class VAE(nn.Module):
                 H_rec -= H_rec.min()
                 H_rec /= 6 * H_rec.std()
                 H_clipped = np.clip(H_rec[..., np.newaxis], 0, 1)
-                # vis = H_rec >= 0.05 * H_rec.std()
+                vis = H_rec >= 0.05 * H_rec.std()
                 pic = H_clipped * overlay_cloud
 
                 # manage opacity
-                pic[..., 3] = np.sqrt(np.clip(H_rec+0.05, 0, 0.85))
+                pic[vis, 3] = np.sqrt(np.clip(H_rec[vis], 0, 0.85))
 
                 # Get the lines
                 self.always_random_sample = False
@@ -393,4 +405,7 @@ class VAE(nn.Module):
                 vis = H_grid != 0
                 pic[vis, 3] = np.clip(opacity, 0, 1)
             plt.imshow(pic)
-            plt.show()
+            if save_name is not None:
+                plt.savefig(save_name)
+            if show:
+                plt.show()
