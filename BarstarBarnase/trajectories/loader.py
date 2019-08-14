@@ -119,7 +119,7 @@ def shared_preprocessing(x):
     pca = PCA(whiten = True)
     whitened = pca.fit_transform(x[start_cutoff:])
     
-    return whitened[:, :100]
+    return whitened[:, : 100]
 
 ##########  The actual production of new dataset objects  ##########
 

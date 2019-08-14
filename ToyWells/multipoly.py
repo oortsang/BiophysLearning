@@ -155,29 +155,29 @@ class PiecewisePolynomial():
 # plt.plot(xs, ys)
 # plt.show()
 
-w1 = MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
-w2 = MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]]) 
-w3 = MultiPolynomial([[0, 0, 0.75], [0, 0, 0], [0.75, -6, -72]])
-c1  = MultiPolynomial([[0,1],[0,0]])
+# w1 = MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
+# w2 = MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]]) 
+# w3 = MultiPolynomial([[0, 0, 0.75], [0, 0, 0], [0.75, -6, -72]])
+# c1  = MultiPolynomial([[0,1],[0,0]])
 
-# c2  = MultiPolynomial([[0,0],[1,-2]])
-c21 = MultiPolynomial([[0,-1],[2,5]])
-c22 = MultiPolynomial([[0,1],[2, 5]])
-c2c = MultiPolynomial([[0,1],[0,0]])
-c2 = PiecewisePolynomial(c21, c22, c2c)
+# # c2  = MultiPolynomial([[0,0],[1,-2]])
+# c21 = MultiPolynomial([[0,-1],[2,5]])
+# c22 = MultiPolynomial([[0,1],[2, 5]])
+# c2c = MultiPolynomial([[0,1],[0,0]])
+# c2 = PiecewisePolynomial(c21, c22, c2c)
 
-p1  = PiecewisePolynomial(w1, w2, c1)
-p   = PiecewisePolynomial(w3, p1, c2)
+# p1  = PiecewisePolynomial(w1, w2, c1)
+# p   = PiecewisePolynomial(w3, p1, c2)
 
-xs1d = np.arange(-12, 12, 0.5)
-xs = np.transpose([np.tile(xs1d, xs1d.shape[0]), np.repeat(xs1d, xs1d.shape[0])]).reshape((xs1d.shape[0], xs1d.shape[0], 2))
-zs = p(xs.reshape(xs.shape[0]*xs.shape[1], xs.shape[2])).reshape(xs.shape[:-1])
+# xs1d = np.arange(-12, 12, 0.5)
+# xs = np.transpose([np.tile(xs1d, xs1d.shape[0]), np.repeat(xs1d, xs1d.shape[0])]).reshape((xs1d.shape[0], xs1d.shape[0], 2))
+# zs = p(xs.reshape(xs.shape[0]*xs.shape[1], xs.shape[2])).reshape(xs.shape[:-1])
 
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.plot_surface(xs[:,:,0], xs[:,:,1], zs, cmap = 'jet')
-# ax.plot_wireframe(xs[:,:,0], xs[:,:,1], zs)
-plt.show()
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
+# ax.plot_surface(xs[:,:,0], xs[:,:,1], zs, cmap = 'jet')
+# # ax.plot_wireframe(xs[:,:,0], xs[:,:,1], zs)
+# plt.show()
 
 # F = MultiPolynomial([[0,1,2],[1,2,0],[1,3,4]]) # 2D
 # H = MultiPolynomial(np.array([[[1,0],[0,1]],[[0,1],[1,0]]])) # 3D but with relatively low degree

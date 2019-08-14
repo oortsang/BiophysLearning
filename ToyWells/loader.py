@@ -148,8 +148,8 @@ def time_lag(dataset):
     # Whiten the data
     mean_free_data = whiten(mean_free_data)
 
-    # mean_free_data = scrambler(mean_free_data)
-    # mean_free_data = whiten(mean_free_data)
+    mean_free_data = scrambler(mean_free_data)
+    mean_free_data = whiten(mean_free_data)
 
     # copy over data from dt timesteps later
     lag_data = np.zeros((mean_free_data.shape[0] - dt, 2 * mean_free_data.shape[1]), dtype = np.float32)

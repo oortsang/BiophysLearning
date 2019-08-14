@@ -93,14 +93,14 @@ in_dim = sim_data.data[:].shape[1]
 if time_lagged:
     in_dim //= 2
 
-h_size = in_dim + 1 # size of hidden layers -- don't have to all be the same size though!
+h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
 
 # the layers themselves
 encode_layers_means = [nn.Linear(in_dim, h_size),
                        nn.ReLU(),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
@@ -113,8 +113,8 @@ encode_layers_vars  = [nn.Linear(in_dim, h_size),
 
 decode_layers_means = [nn.Linear(n_z, h_size),
                        nn.ReLU(),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.ReLU(),
                        nn.Linear(h_size,in_dim)
                       ]
 
@@ -125,9 +125,10 @@ decode_layers_vars  = [nn.Linear(n_z, h_size),
                        nn.Linear(h_size, in_dim)
                       ]
 
-propagator_layers   = [nn.Linear(n_z, n_z+2),
-                       nn.ReLU(),
-                       nn.Linear(n_z+2, n_z)
+propagator_layers   = [# nn.Linear(n_z, n_z+2),
+                       # nn.ReLU(),
+                       # nn.Linear(n_z+2, n_z),
+                       nn.Linear(n_z, n_z)
                       ]
 if not propagator:
     propagator_layers = None
@@ -378,7 +379,7 @@ vae_model.latent_plot2d(mode = 'r')
 vae_model.latent_plot2d(mode = 'd')
 vae_model.plot_test()
 
-if True:
+if False:
     for i in range(len(models)):
         print(i)
         _ = vae_model.load_state_dict(models[i])

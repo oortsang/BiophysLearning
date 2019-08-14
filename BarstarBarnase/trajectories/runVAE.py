@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # runVAE.py - Oliver Tsang, July 2019
 #
 # main python file and is in charge of training the variational autoencoder described in VAE.py
@@ -57,6 +58,8 @@ import copy
 
 # import from other modules in the folder
 from VAE import VAE
+import tica
+
 from loader import nor_sim_data # normalized dimensions
 from loader import raw_sim_data
 from loader import pca_sim_data
@@ -77,15 +80,15 @@ model_param_fname = "data/model_parameters"
 variational = True
 time_lagged = True
 propagator  = True
-denoising   = False
+denoising   = True
 
 if time_lagged:
     sim_data = tla_sim_data
 else:
     sim_data = con_sim_data
 
-n_epochs = 50
-batch_size = 20
+n_epochs = 100
+batch_size = 50
 
 # Network dimensions
 # in_dim = 8 # input dimension
@@ -96,53 +99,62 @@ if time_lagged:
 n_z = 1 # dimensionality of latent space
 
 # h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
-h_size = int(np.sqrt(in_dim/n_z))
+h_size = int(np.sqrt(in_dim/n_z))+2
 h_size_0 = int((in_dim/n_z)**(2/3))+2
 h_size_1 = int((in_dim/n_z)**(1/3))+2
-dropout_input  = 0.1
+dropout_input  = 0.3
 dropout_hidden = 0.5
+dropout_low    = 0.2
 
 # the layers themselves
-encode_layers_means = [# nn.Dropout(dropout_input),
-                       nn.Linear(in_dim, h_size_0),
-                       nn.ReLU(),
+encode_layers_means = [nn.Dropout(dropout_input),
+                       nn.Linear(in_dim, h_size),
                        nn.Dropout(dropout_hidden),
+                       nn.Tanh(),
+
                        # nn.Linear(h_size_0, h_size_1),
-                       # nn.ReLU(),
-                       nn.Linear(h_size_0, n_z)
+                       # nn.Dropout(dropout_low),
+                       # nn.Tanh(),
+
+                       nn.Linear(h_size, n_z),
                        # just linear combination without activation
                       ]
 
-encode_layers_vars  = [# nn.Dropout(dropout_input),
+encode_layers_vars  = [nn.Dropout(dropout_input),
                        nn.Linear(in_dim, h_size),
-                       nn.ReLU(),
                        nn.Dropout(dropout_hidden),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
-                       nn.Linear(h_size, n_z)
-                      ]
+                       nn.Tanh(),
 
-decode_layers_means = [nn.Linear(n_z, h_size_0),
-                       nn.ReLU(),
-                       nn.Dropout(dropout_hidden),
                        # nn.Linear(h_size_0, h_size_1),
-                       # nn.ReLU(),
-                       nn.Linear(h_size_0,in_dim)
+                       # nn.Dropout(dropout_hidden),
+                       # nn.Tanh(),
+
+                       nn.Linear(h_size, n_z),
                       ]
 
-decode_layers_vars  = [nn.Linear(n_z, h_size),
-                       nn.ReLU(),
-                       nn.Dropout(dropout_hidden),
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
+decode_layers_means = [nn.Linear(n_z, h_size),
+                       nn.Dropout(dropout_low),
+                       nn.Tanh(),
+
+                       # nn.Linear(h_size_0, h_size_1),
+                       # nn.Dropout(dropout_hidden),
+                       # nn.Tanh(),
+
                        nn.Linear(h_size, in_dim)
                       ]
 
-propagator_layers   = [# nn.Linear(n_z, n_z+2),
-                       # nn.ReLU(),
-                       # nn.Linear(n_z+2, n_z),
-                       nn.Linear(n_z, n_z)
+decode_layers_vars  = [#nn.Dropout(dropout_input),
+                       nn.Linear(n_z, h_size),
+                       nn.Dropout(dropout_low),
+                       nn.Tanh(),
+                       # nn.Linear(h_size_0, h_size_1),
+                       # nn.Dropout(dropout_hidden),
+                       # nn.Tanh(),
+                       nn.Linear(h_size, in_dim)
                       ]
+
+propagator_layers   = [nn.Linear(n_z, n_z)]
+
 if not propagator:
     propagator_layers = None
 discount = 1.0
@@ -153,13 +165,13 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 1e-3           # learning rate
+lr = 1.5e-3              # learning rate
 weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
-momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.001
+momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
+denoise_sig = 0.3
 
-pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(600) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -349,7 +361,7 @@ else:
 models = [] # Stores old models in case an older one did better
 loss_array = []
 val_loss_array = []
-weight = 0.999999
+weight = 0.9999
 wavg_loss_array = []
 start_time = time.time() # Keep track of run time
 
@@ -366,8 +378,8 @@ for epoch in range(n_epochs):
     val_outs = vae_model.run_data(val_set)
     true_val_mse = square_loss(val_set.data[:,:in_dim], val_outs)
 
-    wavg_loss = (1-weight) * np.array(true_val_mse) \
-                + weight   * np.array(val_loss_array[-1])
+    wavg_loss = (1-weight) * np.array(val_loss_array[-1]) \
+                + weight   * np.array(true_val_mse)
 
     # wavg_loss = weight       * np.array(val_loss_array[-1]) \
     #             + (1-weight) * np.array(loss_array[-1])
@@ -383,7 +395,7 @@ for epoch in range(n_epochs):
 
     cutoff = 5
     # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
-    if epoch >= 5 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
+    if epoch >= 30 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
         print("Stopping training since the validation error has increased over the past 3 epochs.\n"
               "Replacing vae_model with the most recent model with lowest total validation loss.")
         break
@@ -399,6 +411,7 @@ print("Selecting the model from epoch", idx)
 
 vae_model.latent_plot(mode = 'rr')
 vae_model.latent_plot(mode = 'd', axes = (0,))
+vae_model.plot_test(axes = (6,1), dims = (0,1,2,3,99))
 # vae_model.plot_test()
 
 if False:

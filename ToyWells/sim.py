@@ -130,17 +130,17 @@ RWell = 0.001*MultiPolynomial(RipCoeffs)
 #     plt.imshow(outs,cmap='jet')
 #     plt.show()
 height = 8e-26
-lwell = height * MultiPolynomial([1, 8, 16])
-mwell = height * MultiPolynomial([0.25, 0,  3])
-rwell = height * MultiPolynomial([1,-8, 16])
+lwell = height * MultiPolynomial([1.5, 16, 32])
+mwell = height * MultiPolynomial([1, 0,  -11.5])
+rwell = height * MultiPolynomial([1.5,-16, 32])
 # c  = MultiPolynomial([1,0])
-c1 = MultiPolynomial([-1,2])
-c2 = MultiPolynomial([-1,-2])
+c1 = MultiPolynomial([-1,3])
+c2 = MultiPolynomial([-1,-3])
 PLWell = PiecewisePolynomial(mwell,  rwell, c1)
 PWell  = PiecewisePolynomial(lwell, PLWell, c2)
 
 # Piecewise potential landscape with three wells in 2D
-scale = 4e-26
+scale = 2e-26
 w1 = scale * MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
 w2 = scale * MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]]) 
 # w3 = scale * MultiPolynomial([[0, 0, 0.5], [0, 0, 0], [0.5, -4, -48]])
@@ -175,12 +175,12 @@ plt.plot(xs, PWell(xs))
 plt.show()
 
 
-p1 = Particle(p_trip, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(PWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)
 
-npart = 1
+npart = 2
 particles = [p1,
              p2,
              # p3,

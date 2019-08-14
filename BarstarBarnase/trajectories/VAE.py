@@ -122,7 +122,7 @@ class VAE(nn.Module):
     def decode(self, z):
         """Takes a single z sample and attempts to reconstruct the inputs"""
         output_mu = self.decode_net_means(z)
-        output_lv = self.out_lv_ests  + torch.clamp(self.varnet_weight, 0,1) * self.decode_net_vars(z)
+        output_lv = self.out_lv_ests + torch.clamp(self.varnet_weight, 0,1) * self.decode_net_vars(z)
         self.xp = (output_mu, output_lv)
         return self.xp
         # tmp = self.prelim_net(z)
@@ -225,10 +225,13 @@ class VAE(nn.Module):
         _, recon, _ = self(data)
         return recon[0].detach().numpy()
 
-    def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0):
+    def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0, dims = None):
         """Plots the predictions of the model and its latent variables"""
         if axes[0] is None:
             axes = (1+self.in_dim, axes[1])
+
+        if dims is None:
+            dims = range(min(self.in_dim, axes[0]-1))
 
         if data is None:
             if self.pref_dataset is None:
@@ -251,12 +254,13 @@ class VAE(nn.Module):
                          )
             )
             plt.plot(latents)
-            for i in range(self.in_dim):
+            # for i in range(min(self.in_dim, axes[0]-1))
+            for i in range(len(dims)):
                 plt.subplot(*axes, 2+i)
                 plt.title("Particle %d" % (i+1))
                 # pdb.set_trace()
-                plt.plot(bigdata[:,i], label = ("Input %d"% (i+1)))
-                plt.plot(range(dt,dt+outputs.shape[0]), outputs[:,i], label = ("Reconstruction %d" % (i+1)))
+                plt.plot(bigdata[:,dims[i]], label = ("Input %d"% (dims[i]+1)))
+                plt.plot(range(dt,dt+outputs.shape[0]), outputs[:,i], label = ("Reconstruction %d" % (dims[i]+1)))
                 plt.legend(loc = 'lower right')
             plt.show()
         if ret:
@@ -312,6 +316,8 @@ class VAE(nn.Module):
                 plt.savefig(save_name)
             if show:
                 plt.show()
+            else:
+                plt.close()
         elif mode == 'latent val' or mode == 'l':
             # get the mean score for each point on the grid
             latents = self.just_encode(grid).reshape(bins, bins)
@@ -324,12 +330,16 @@ class VAE(nn.Module):
                 plt.savefig(save_name)
             if show:
                 plt.show()
+            else:
+                plt.close()
         elif mode == 'background' or mode == 'b':
             plt.imshow(H, cmap = 'jet', alpha = 1)
             if save_name is not None:
                 plt.savefig(save_name)
             if show:
                 plt.show()
+            else:
+                plt.close()
         else:
             # initialize background image
             plt.imshow(H, cmap = 'jet', alpha = 0.67)

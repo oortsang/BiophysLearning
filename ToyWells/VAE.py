@@ -355,6 +355,7 @@ class VAE(nn.Module):
                 self.training = prev_train
 
             elif mode == 'random reconstruction' or mode == 'rr':
+                # plt.close()
                 # attempts to reconstruct the original data
                 prev_sample = self.always_random_sample
                 prev_train = self.training
