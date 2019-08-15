@@ -10,6 +10,8 @@ import h5py as h5
 from torch.utils import data
 from sklearn.decomposition import PCA
 
+from tica import TICA
+
 start_cutoff = 0
 dt = 50 # time lag in frames
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
@@ -115,10 +117,12 @@ def shared_preprocessing(x):
     norm_data = np.zeros(x.shape, dtype = np.float32)[start_cutoff:]
     clipped_data = x[start_cutoff:, :]
     norm_data = remove_means(clipped_data)
-    # whitened = whiten(norm_data)
-    pca = PCA(whiten = True)
-    whitened = pca.fit_transform(x[start_cutoff:])
-    
+    whitened = whiten(norm_data)
+    # pca = PCA(whiten = True)
+    # whitened = pca.fit_transform(x[start_cutoff:])
+    tica = TICA(whitened, dt, kinetic_map = True)
+    tic = tica.transform(whitened)
+
     return whitened[:, : 100]
 
 ##########  The actual production of new dataset objects  ##########
@@ -130,6 +134,11 @@ def normalize(data):
 def convolve(data):
     """Set each dimension to have mean 0, variance 1 then convolves over the whole thing using a spline"""
     conv_data = conver(data)
+
+    # # run tica
+    # tica = TICA(conv_data, dt, kinetic_map = True)
+    # conv_data = tica.transform(conv_data)
+
     return conv_data
 
 
@@ -139,6 +148,10 @@ def time_lag(data):
     data = conver(data)
     # # Whiten the data
     # data = whiten(data)
+
+    # # run tica
+    # tica = TICA(data, dt, kinetic_map = True)
+    # data = tica.transform(data)
 
     # data = scrambler(data)
     # data = whiten(data)

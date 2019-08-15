@@ -58,7 +58,7 @@ import copy
 
 # import from other modules in the folder
 from VAE import VAE
-import tica
+from tica import TICA
 
 from loader import nor_sim_data # normalized dimensions
 from loader import raw_sim_data
@@ -80,7 +80,7 @@ model_param_fname = "data/model_parameters"
 variational = True
 time_lagged = True
 propagator  = True
-denoising   = True
+denoising   = False
 
 if time_lagged:
     sim_data = tla_sim_data
@@ -99,12 +99,12 @@ if time_lagged:
 n_z = 1 # dimensionality of latent space
 
 # h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
-h_size = int(np.sqrt(in_dim/n_z))+2
-h_size_0 = int((in_dim/n_z)**(2/3))+2
-h_size_1 = int((in_dim/n_z)**(1/3))+2
-dropout_input  = 0.3
+h_size   = int(np.sqrt(in_dim/n_z) * n_z)+2
+h_size_0 = int((in_dim/n_z)**(2/3) * n_z)+2
+h_size_1 = int((in_dim/n_z)**(1/3) * n_z)+2
+dropout_input  = 0.2
 dropout_hidden = 0.5
-dropout_low    = 0.2
+dropout_low    = 0.1
 
 # the layers themselves
 encode_layers_means = [nn.Dropout(dropout_input),
@@ -143,13 +143,14 @@ decode_layers_means = [nn.Linear(n_z, h_size),
                        nn.Linear(h_size, in_dim)
                       ]
 
-decode_layers_vars  = [#nn.Dropout(dropout_input),
-                       nn.Linear(n_z, h_size),
+decode_layers_vars  = [nn.Linear(n_z, h_size),
                        nn.Dropout(dropout_low),
                        nn.Tanh(),
+
                        # nn.Linear(h_size_0, h_size_1),
                        # nn.Dropout(dropout_hidden),
                        # nn.Tanh(),
+
                        nn.Linear(h_size, in_dim)
                       ]
 
@@ -171,13 +172,13 @@ weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the ma
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 denoise_sig = 0.3
 
-pxz_var_init = -np.log(600) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
 # Finish preparing data
-train_amt = 0.8 # fraction of samples used as training
-val_amt   = 0.15 # fractions of samples used as validation
+train_amt = 0.7 # fraction of samples used as training
+val_amt   = 0.25 # fractions of samples used as validation
 test_amt  = 1 - train_amt - val_amt
 
 # DataLoaders to help with minibatching
@@ -190,13 +191,13 @@ else:
     delay = 0
     tot_size = len(sim_data)
     if time_lagged:
-        delay = 5 * dt
+        delay = 2 * dt
         tot_size -= 2 * delay # wait between sets to decrease correlation
 
     # Scale fractions to number of examples
     train_size = int(tot_size * train_amt)
     train_size -= train_size % threads
-    val_size   = int(tot_size * test_amt)
+    val_size   = int(tot_size * val_amt)
     test_size  = tot_size - (train_size + val_size)
 
     # Find indices
@@ -315,6 +316,16 @@ if __name__ == "__main__":
     pca_loss = square_loss(sim_data.data[:,-in_dim:], pca_guesses)
     print("PCA gets a reconstruction loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
 
+    # Compare against TICA
+    tica_start = time.time()
+    tica = TICA(sim_data.data[:,:in_dim], dt)
+    tica_latent = tica.transform(sim_data.data[:,:in_dim])
+    tica_latent[:,n_z:] = 0
+    tica_guesses = tica.inv_transform(tica_latent)
+    # tica_loss = square_loss(sim_data.data[:,-in_dim:], tica_guesses)
+    tica_loss = square_loss(sim_data.data[:,-in_dim:], tica_guesses)
+    print("TICA gets a reconstruction loss of %f in %f seconds" % (tica_loss, time.time()-tica_start))
+
     # Compare against the desired result
     desired = np.zeros((sim_data.data.shape[0], in_dim))
     desired[:,0] = sim_data.data[:,0]
@@ -361,7 +372,7 @@ else:
 models = [] # Stores old models in case an older one did better
 loss_array = []
 val_loss_array = []
-weight = 0.9999
+weight = 0.9993 #0.9999
 wavg_loss_array = []
 start_time = time.time() # Keep track of run time
 
@@ -373,10 +384,10 @@ for epoch in range(n_epochs):
     # val_loss_array.append(val_loss)
     val_loss_array.append(val_rec_loss)
     train_outs = vae_model.run_data(train_set)
-    true_train_mse = square_loss(train_set.data[:,:in_dim], train_outs)
+    true_train_mse = square_loss(train_set.data[:,-in_dim:], train_outs)
 
     val_outs = vae_model.run_data(val_set)
-    true_val_mse = square_loss(val_set.data[:,:in_dim], val_outs)
+    true_val_mse = square_loss(val_set.data[:,-in_dim:], val_outs)
 
     wavg_loss = (1-weight) * np.array(val_loss_array[-1]) \
                 + weight   * np.array(true_val_mse)

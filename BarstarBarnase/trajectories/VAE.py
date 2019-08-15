@@ -223,7 +223,7 @@ class VAE(nn.Module):
         self.eval()
         data = torch.tensor(data, dtype=self.data_type)
         _, recon, _ = self(data)
-        return recon[0].detach().numpy()
+        return recon[1].detach().numpy()
 
     def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0, dims = None):
         """Plots the predictions of the model and its latent variables"""
