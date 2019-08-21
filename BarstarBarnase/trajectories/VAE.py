@@ -132,12 +132,14 @@ class VAE(nn.Module):
         # return self.xp
 
     # run through encoder, sampler, and decoder
-    def forward(self, x):
+    def forward(self, x, return_np = False):
         """Calls the other functions to run a batch/data set through the proper networks.
         To deal with the possibility of propagation, we return a tuple - first element is
         is the number of future steps to expect in the tensor...
         """
         # if we feed in too many dimensions, just take the first self.in_dim
+        if x.__class__ == np.ndarray:
+            x = torch.tensor(x, dtype = self.data_type)
         if x.dim() == 2 and x.shape[-1] != self.in_dim:
             x = x[:, :self.in_dim]
         z_dist    = self.encode(x)        # 1. Encode
@@ -165,10 +167,13 @@ class VAE(nn.Module):
             # propagate in latent space and decode
             self.z_fut = self.propagator_net(self.z_fut)
             all_means[1+0], all_lvs[1+0] = self.decode(self.z_fut)
+            if return_np:
+                all_means = all_means.detach().numpy()
+                all_lvs   = all_lvs.detach().numpy()
             return (fut_steps, all_means, all_lvs)
 
 
-    def vae_loss(self, pred_means, pred_lvs, truth):
+    def vae_loss(self, pred_means, pred_lvs, truth, kl_lambda = 1):
         # -log p(x) = - E[log p(x|z)] + KL[q(z)||p(z)]
         #
         # E[log P (x | z)] - Reconstruction part
@@ -204,7 +209,7 @@ class VAE(nn.Module):
         # else:
         #     reg_loss = 0
         # return (self.rec_loss + kl_div + 0.01 * reg_loss) / pred_means.shape[0]
-        return (self.rec_loss + kl_div) / pred_means.shape[0]
+        return (self.rec_loss + kl_lambda * kl_div) / pred_means.shape[0]
 
     def just_encode(self, x):
         """Runs data through just the encoder"""
@@ -214,7 +219,7 @@ class VAE(nn.Module):
         z_dist = self.encode(x)
         return z_dist[0].detach().numpy() # returns just the means
 
-    def run_data(self, data=None):
+    def run_data(self, data=None, future = True):
         """Runs the whole dataset through the network"""
         if data is None:
             if self.pref_dataset is None:
@@ -223,7 +228,7 @@ class VAE(nn.Module):
         self.eval()
         data = torch.tensor(data, dtype=self.data_type)
         _, recon, _ = self(data)
-        return recon[1].detach().numpy()
+        return recon[1 if future else 0].detach().numpy()
 
     def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0, dims = None):
         """Plots the predictions of the model and its latent variables"""
@@ -279,12 +284,18 @@ class VAE(nn.Module):
                 return None
             data = self.pref_dataset
 
-        if mode == 'latent dist' or mode == 'd':
+        if mode == 'latent dist' or mode == 'd' \
+            or mode == 'latent potential well' or mode == 'w':
+
             # plot the distribution of latent variables in latent space
             latents = self.just_encode(torch.tensor(data, dtype=self.data_type)) # get the mean score for each point on the grid
             Hlat, xedges = np.histogram(latents[:, axes], bins=bins)
             xpts = 0.5*(xedges[1:] + xedges[:-1])
-            plt.plot(xpts, Hlat)
+
+            if mode == 'latent potential well' or mode == 'w':
+                plt.plot(xpts, -np.log(Hlat+0.001)) # put a little padding in case of Hlat=0
+            else:
+                plt.plot(xpts, Hlat)
             if save_name is not None:
                 plt.savefig(save_name)
             if show:

@@ -103,51 +103,55 @@ h_size   = int(np.sqrt(in_dim/n_z) * n_z)+2
 h_size_0 = int((in_dim/n_z)**(2/3) * n_z)+2
 h_size_1 = int((in_dim/n_z)**(1/3) * n_z)+2
 dropout_input  = 0.2
-dropout_hidden = 0.5
-dropout_low    = 0.1
+dropout_hidden = 0.4
+dropout_low    = 0.3
 
 # the layers themselves
 encode_layers_means = [nn.Dropout(dropout_input),
-                       nn.Linear(in_dim, h_size),
+                       nn.Linear(in_dim, h_size_0),
                        nn.Dropout(dropout_hidden),
                        nn.Tanh(),
 
-                       # nn.Linear(h_size_0, h_size_1),
-                       # nn.Dropout(dropout_low),
-                       # nn.Tanh(),
+                       nn.Linear(h_size_0, h_size_1),
+                       nn.Dropout(dropout_low),
+                       nn.Tanh(),
 
-                       nn.Linear(h_size, n_z),
+                       nn.Linear(h_size_1, n_z),
                        # just linear combination without activation
                       ]
 
 encode_layers_vars  = [nn.Dropout(dropout_input),
-                       nn.Linear(in_dim, h_size),
+                       nn.Linear(in_dim, h_size_0),
                        nn.Dropout(dropout_hidden),
                        nn.Tanh(),
 
-                       # nn.Linear(h_size_0, h_size_1),
-                       # nn.Dropout(dropout_hidden),
-                       # nn.Tanh(),
+                       nn.Linear(h_size_0, h_size_1),
+                       nn.Dropout(dropout_hidden),
+                       nn.Tanh(),
 
-                       nn.Linear(h_size, n_z),
+                       nn.Linear(h_size_1, h_size_1),
+                       nn.Dropout(dropout_hidden),
+                       nn.Tanh(),
+
+                       nn.Linear(h_size_1, n_z),
                       ]
 
-decode_layers_means = [nn.Linear(n_z, h_size),
+decode_layers_means = [nn.Linear(n_z, h_size_1),
                        nn.Dropout(dropout_low),
                        nn.Tanh(),
 
-                       # nn.Linear(h_size_0, h_size_1),
-                       # nn.Dropout(dropout_hidden),
-                       # nn.Tanh(),
+                       nn.Linear(h_size_1, h_size_0),
+                       nn.Dropout(dropout_hidden),
+                       nn.Tanh(),
 
-                       nn.Linear(h_size, in_dim)
+                       nn.Linear(h_size_0, in_dim)
                       ]
 
 decode_layers_vars  = [nn.Linear(n_z, h_size),
                        nn.Dropout(dropout_low),
                        nn.Tanh(),
 
-                       # nn.Linear(h_size_0, h_size_1),
+                       # nn.Linear(h_size_1, h_size_0),
                        # nn.Dropout(dropout_hidden),
                        # nn.Tanh(),
 
@@ -167,18 +171,18 @@ optim_fn = optim.Adam
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
 lr = 1.5e-3              # learning rate
-weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.3
+denoise_sig = 0.15
 
-pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(400) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
 # Finish preparing data
-train_amt = 0.7 # fraction of samples used as training
-val_amt   = 0.25 # fractions of samples used as validation
+train_amt = 0.6 # fraction of samples used as training
+val_amt   = 0.35 # fractions of samples used as validation
 test_amt  = 1 - train_amt - val_amt
 
 # DataLoaders to help with minibatching
@@ -212,7 +216,7 @@ else:
 
 
 ###  train the network!  ###
-def trainer(model, optimizer, epoch, models, loss_array):
+def trainer(model, optimizer, epoch, models, loss_array, kl_lambda = 1):
     """Train for one epoch
 
     Arguments:
@@ -245,12 +249,12 @@ def trainer(model, optimizer, epoch, models, loss_array):
 
         # get loss
         if fut_steps == 0:
-            loss     = model.vae_loss(recon_means[0], recon_lvs[0], goal_data)
+            loss     = model.vae_loss(recon_means[0], recon_lvs[0], goal_data, kl_lambda=kl_lambda)
             rec_loss = model.rec_loss.item()/train_data.shape[0] # reconstruction loss
         else:
-            loss     =  model.vae_loss(recon_means[0], recon_lvs[0], goal_data)
+            loss     =  model.vae_loss(recon_means[0], recon_lvs[0], goal_data, kl_lambda=kl_lambda)
             rec_loss =  model.rec_loss.item()/train_data.shape[0] # reconstruction loss
-            loss     += model.vae_loss(recon_means[1], recon_lvs[1], goal_data) * model.discount
+            loss     += model.vae_loss(recon_means[1], recon_lvs[1], goal_data, kl_lambda=kl_lambda) * model.discount
             rec_loss += model.rec_loss.item()/train_data.shape[0] # reconstruction loss
         loss_scalar = loss.item()
         epoch_fail += rec_loss
@@ -329,10 +333,11 @@ if __name__ == "__main__":
     # Compare against the desired result
     desired = np.zeros((sim_data.data.shape[0], in_dim))
     desired[:,0] = sim_data.data[:,0]
-    desired[:,1] = sim_data.data[:,1].mean()
+    for i in range(desired.shape[1]-1):
+        desired[:,i+1] = sim_data.data[:,i+1].mean()
     # des_loss = ((desired - sim_data.data[:,-in_dim:])**2).sum(1).mean()
     des_loss = square_loss(sim_data.data[:,-in_dim:], desired)
-    print("Considering just the double well axis gives a loss of", des_loss)
+    print("Remembering just the first axis gives a loss of", des_loss)
 
     # Prepare for visualization
     inputs = sim_data.data[:,:in_dim]
@@ -343,91 +348,93 @@ if __name__ == "__main__":
     grid = torch.tensor(grid, dtype = data_type)
     # can imshow H or run grid through vae_model.just_encode(grid)[0]
 
-# Initialize the model
-vae_model = VAE(in_dim              = in_dim,
-                n_z                 = n_z,
-                encode_layers_means = encode_layers_means,
-                encode_layers_vars  = encode_layers_vars,
-                decode_layers_means = decode_layers_means,
-                decode_layers_vars  = decode_layers_vars,
-                propagator_layers   = propagator_layers,
-                time_lagged         = time_lagged,
-                variational         = variational,
-                pxz_var_init        = pxz_var_init,
-                discount            = discount,
-                data_type           = data_type,
-                pref_dataset        = sim_data.data[:])
-
-# If you want to save/load the model's parameters
-save_model = lambda model: torch.save(model, model_param_fname)
-load_model = lambda: torch.load(model_param_fname)
-
-# set the learning function
-if optim_fn == optim.SGD:
-    optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = momentum)
-else:
-    optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay)
-
-# miscellaneous book-keeping variables
-models = [] # Stores old models in case an older one did better
-loss_array = []
-val_loss_array = []
-weight = 0.9993 #0.9999
-wavg_loss_array = []
-start_time = time.time() # Keep track of run time
-
-# Now actually do the training
-for epoch in range(n_epochs):
-    trainer(vae_model, optimizer, epoch, models, loss_array)
-    val_loss, val_rec_loss = test(vae_model, val_set)
-    print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
-    # val_loss_array.append(val_loss)
-    val_loss_array.append(val_rec_loss)
-    train_outs = vae_model.run_data(train_set)
-    true_train_mse = square_loss(train_set.data[:,-in_dim:], train_outs)
-
-    val_outs = vae_model.run_data(val_set)
-    true_val_mse = square_loss(val_set.data[:,-in_dim:], val_outs)
-
-    wavg_loss = (1-weight) * np.array(val_loss_array[-1]) \
-                + weight   * np.array(true_val_mse)
-
-    # wavg_loss = weight       * np.array(val_loss_array[-1]) \
-    #             + (1-weight) * np.array(loss_array[-1])
-    wavg_loss_array.append(wavg_loss)
-
-    print("True Training MSE: %f" % true_train_mse)
-    print("True Valid'n  MSE: %f" % true_val_mse)
-    duration = time.time() - start_time
-    print("%f seconds have elapsed since the training began\n" % duration)
-
-    if epoch == 5:
-        vae_model.varnet_weight += 1
-
-    cutoff = 5
-    # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
-    if epoch >= 30 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
-        print("Stopping training since the validation error has increased over the past 3 epochs.\n"
-              "Replacing vae_model with the most recent model with lowest total validation loss.")
-        break
-
-# idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.01, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error but biases more recent runs
-
-idx = len(wavg_loss_array) - 1 \
-      - np.argmin(wavg_loss_array[::-1])
-_ = vae_model.load_state_dict(models[idx])
-print("Selecting the model from epoch", idx)
-
-# vae_model.plot_test(test_set)
-
-vae_model.latent_plot(mode = 'rr')
-vae_model.latent_plot(mode = 'd', axes = (0,))
-vae_model.plot_test(axes = (6,1), dims = (0,1,2,3,99))
-# vae_model.plot_test()
-
-if False:
-    for i in range(len(models)):
-        print(i)
-        _ = vae_model.load_state_dict(models[i])
-        vae_model.latent_plot2d('rr')
+    # Initialize the model
+    vae_model = VAE(in_dim              = in_dim,
+                    n_z                 = n_z,
+                    encode_layers_means = encode_layers_means,
+                    encode_layers_vars  = encode_layers_vars,
+                    decode_layers_means = decode_layers_means,
+                    decode_layers_vars  = decode_layers_vars,
+                    propagator_layers   = propagator_layers,
+                    time_lagged         = time_lagged,
+                    variational         = variational,
+                    pxz_var_init        = pxz_var_init,
+                    discount            = discount,
+                    data_type           = data_type,
+                    pref_dataset        = sim_data.data[:])
+    
+    # If you want to save/load the model's parameters
+    save_model = lambda model: torch.save(model, model_param_fname)
+    load_model = lambda: torch.load(model_param_fname)
+    
+    # set the learning function
+    if optim_fn == optim.SGD:
+        optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = momentum)
+    else:
+        optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay)
+    
+    # miscellaneous book-keeping variables
+    models = [] # Stores old models in case an older one did better
+    loss_array = []
+    val_loss_array = []
+    weight = 0.9993 #0.9999
+    wavg_loss_array = []
+    start_time = time.time() # Keep track of run time
+    
+    # Now actually do the training
+    for epoch in range(n_epochs):
+        kl_lambda = np.clip(epoch/20, 0.1, 1) # slowly anneal
+        # kl_lambda = 1
+        trainer(vae_model, optimizer, epoch, models, loss_array, kl_lambda)
+        val_loss, val_rec_loss = test(vae_model, val_set)
+        print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
+        # val_loss_array.append(val_loss)
+        val_loss_array.append(val_rec_loss)
+        train_outs = vae_model.run_data(train_set)
+        true_train_mse = square_loss(train_set.data[:,-in_dim:], train_outs)
+    
+        val_outs = vae_model.run_data(val_set, future = True)
+        true_val_mse = square_loss(val_set.data[:,-in_dim:], val_outs)
+    
+        wavg_loss = (1-weight) * np.array(val_loss_array[-1]) \
+                    + weight   * np.array(true_val_mse)
+    
+        # wavg_loss = weight       * np.array(val_loss_array[-1]) \
+        #             + (1-weight) * np.array(loss_array[-1])
+        wavg_loss_array.append(wavg_loss)
+    
+        print("True Training MSE: %f" % true_train_mse)
+        print("True Valid'n  MSE: %f" % true_val_mse)
+        duration = time.time() - start_time
+        print("%f seconds have elapsed since the training began\n" % duration)
+    
+        if epoch == 10:
+            vae_model.varnet_weight += 1
+    
+        cutoff = 5
+        # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
+        if epoch >= 30 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
+            print("Stopping training since the validation error has increased over the past 3 epochs.\n"
+                  "Replacing vae_model with the most recent model with lowest total validation loss.")
+            break
+    
+    # idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.01, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error but biases more recent runs
+    
+    idx = len(wavg_loss_array) - 1 \
+          - np.argmin(wavg_loss_array[::-1])
     _ = vae_model.load_state_dict(models[idx])
+    print("Selecting the model from epoch", idx)
+    
+    # vae_model.plot_test(test_set)
+    
+    vae_model.latent_plot(mode = 'rr')
+    vae_model.latent_plot(mode = 'd', axes = (0,))
+    vae_model.plot_test(axes = (6,1), dims = (0,1,2,3,99))
+    # vae_model.plot_test()
+    
+    if False:
+        for i in range(len(models)):
+            print(i)
+            _ = vae_model.load_state_dict(models[i])
+            vae_model.latent_plot2d('rr')
+        _ = vae_model.load_state_dict(models[idx])

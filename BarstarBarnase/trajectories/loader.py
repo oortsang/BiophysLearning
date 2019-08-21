@@ -13,7 +13,7 @@ from sklearn.decomposition import PCA
 from tica import TICA
 
 start_cutoff = 0
-dt = 50 # time lag in frames
+dt = 10 # time lag in frames
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
 ########## Class to hold the data we load ##########
@@ -103,10 +103,10 @@ def scrambler(x):
     """Performs some scrambling operation"""
     # # A few possible ways to scramble the data
     # x = 0.5*np.array([[np.sqrt(2), np.sqrt(2)], [-np.sqrt(2), np.sqrt(2)]], dtype=np.float32)
-    # scramble = np.random.rand(2,2)
-    # x = x @ scramble.T
+    scramble = 2*np.random.rand(x.shape[1],x.shape[1])-1
+    x = x @ scramble.T
     # x[:,1] += 3*np.sqrt(np.abs(x[:,0]))
-    x[:,1] += 3 * np.cos(x[:,0])
+    # x[:,1] += 3 * np.cos(x[:,0])
     return x
 
 def shared_preprocessing(x):
@@ -117,12 +117,16 @@ def shared_preprocessing(x):
     norm_data = np.zeros(x.shape, dtype = np.float32)[start_cutoff:]
     clipped_data = x[start_cutoff:, :]
     norm_data = remove_means(clipped_data)
-    whitened = whiten(norm_data)
     # pca = PCA(whiten = True)
     # whitened = pca.fit_transform(x[start_cutoff:])
+    whitened = whiten(norm_data)
+    print("Running TICA...", end = '')
     tica = TICA(whitened, dt, kinetic_map = True)
+    # tica = TICA(whitened, dt, kinetic_map = False)
     tic = tica.transform(whitened)
+    print(" done!")
 
+    # tic = whiten(scrambler(tic[:, : 100]))
     return whitened[:, : 100]
 
 ##########  The actual production of new dataset objects  ##########
