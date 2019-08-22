@@ -13,7 +13,7 @@ from sklearn.decomposition import PCA
 from tica import TICA
 
 start_cutoff = 0
-dt = 10 # time lag in frames
+dt = 50 # time lag in frames
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
 ########## Class to hold the data we load ##########
@@ -118,7 +118,7 @@ def shared_preprocessing(x):
     clipped_data = x[start_cutoff:, :]
     norm_data = remove_means(clipped_data)
     # pca = PCA(whiten = True)
-    # whitened = pca.fit_transform(x[start_cutoff:])
+    # whitened = pca.fit_transform(norm_data)
     whitened = whiten(norm_data)
     print("Running TICA...", end = '')
     tica = TICA(whitened, dt, kinetic_map = True)
@@ -127,7 +127,7 @@ def shared_preprocessing(x):
     print(" done!")
 
     # tic = whiten(scrambler(tic[:, : 100]))
-    return whitened[:, : 100]
+    return tic[:, :200 ]
 
 ##########  The actual production of new dataset objects  ##########
 

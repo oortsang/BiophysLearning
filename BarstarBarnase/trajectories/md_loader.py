@@ -1,6 +1,6 @@
 # Oliver Tsang, Summer 2019
 # (Using Python 3)
-# Mostly copied from Ziwei He's make_msm.py file (which is in Python 2)
+# Partly copied from Ziwei He's make_msm.py file (which is in Python 2)
 
 import mdtraj as md
 import numpy as np
@@ -22,7 +22,7 @@ output_file = "data/OffbrandSimOutputFeatures.h5"
 num = 2
 top = md.load_pdb(top_file)
 main_traj = md.load_dcd(traj_file(num), top = top)
-files = np.arange(3)
+files = [0] # np.arange(3)
 
 # Parameters for get_contact_pairs
 cutoff_dist = 1.2 # nm
@@ -131,7 +131,8 @@ def merge_arrays(contact_pairs, dt, save_file = output_file):
             h5file = h5py.File(fi_name, 'r')
             dists = h5file['particle_tracks'][:]
             h5file.close()
-        tl_data = time_lag(dists, dt)
+        # tl_data = time_lag(dists, dt) # don't do this for now
+        tl_data = dists
         if dists_so_far is None:
             dists_so_far = tl_data
         else:

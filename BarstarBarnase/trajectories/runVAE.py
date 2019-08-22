@@ -73,6 +73,7 @@ print("... finished loading!")
 
 
 data_type = torch.float
+# data_type = torch.double
 threads = 4 # number of threads to use to train
 model_param_fname = "data/model_parameters"
 
@@ -102,19 +103,23 @@ n_z = 1 # dimensionality of latent space
 h_size   = int(np.sqrt(in_dim/n_z) * n_z)+2
 h_size_0 = int((in_dim/n_z)**(2/3) * n_z)+2
 h_size_1 = int((in_dim/n_z)**(1/3) * n_z)+2
-dropout_input  = 0.2
-dropout_hidden = 0.4
-dropout_low    = 0.3
+dropout_input  = 0.4
+dropout_hidden = 0.5
+dropout_low    = 0.2
 
 # the layers themselves
 encode_layers_means = [nn.Dropout(dropout_input),
                        nn.Linear(in_dim, h_size_0),
                        nn.Dropout(dropout_hidden),
-                       nn.Tanh(),
+                       nn.ReLU(),
 
                        nn.Linear(h_size_0, h_size_1),
                        nn.Dropout(dropout_low),
-                       nn.Tanh(),
+                       nn.ReLU(),
+
+                       # nn.Linear(h_size_1, h_size_1),
+                       # nn.Dropout(dropout_low),
+                       # nn.ReLU(),
 
                        nn.Linear(h_size_1, n_z),
                        # just linear combination without activation
@@ -123,39 +128,48 @@ encode_layers_means = [nn.Dropout(dropout_input),
 encode_layers_vars  = [nn.Dropout(dropout_input),
                        nn.Linear(in_dim, h_size_0),
                        nn.Dropout(dropout_hidden),
-                       nn.Tanh(),
+                       nn.ReLU(),
 
                        nn.Linear(h_size_0, h_size_1),
                        nn.Dropout(dropout_hidden),
-                       nn.Tanh(),
+                       nn.ReLU(),
 
-                       nn.Linear(h_size_1, h_size_1),
-                       nn.Dropout(dropout_hidden),
-                       nn.Tanh(),
+                       # nn.Linear(h_size_1, h_size_1),
+                       # nn.Dropout(dropout_hidden),
+                       # nn.Tanh(),
 
                        nn.Linear(h_size_1, n_z),
                       ]
 
 decode_layers_means = [nn.Linear(n_z, h_size_1),
                        nn.Dropout(dropout_low),
-                       nn.Tanh(),
+                       nn.ReLU(),
+
+                       # nn.Linear(h_size_1, h_size_1),
+                       # nn.Dropout(dropout_low),
+                       # nn.ReLU(),
 
                        nn.Linear(h_size_1, h_size_0),
                        nn.Dropout(dropout_hidden),
-                       nn.Tanh(),
+                       nn.ReLU(),
+
 
                        nn.Linear(h_size_0, in_dim)
                       ]
 
-decode_layers_vars  = [nn.Linear(n_z, h_size),
+decode_layers_vars  = [nn.Linear(n_z, h_size_1),
                        nn.Dropout(dropout_low),
-                       nn.Tanh(),
+                       nn.ReLU(),
 
-                       # nn.Linear(h_size_1, h_size_0),
-                       # nn.Dropout(dropout_hidden),
-                       # nn.Tanh(),
+                       # nn.Linear(h_size_1, h_size_1),
+                       # nn.Dropout(dropout_low),
+                       # nn.ReLU(),
 
-                       nn.Linear(h_size, in_dim)
+                       nn.Linear(h_size_1, h_size_0),
+                       nn.Dropout(dropout_hidden),
+                       nn.ReLU(),
+
+                       nn.Linear(h_size_0, in_dim)
                       ]
 
 propagator_layers   = [nn.Linear(n_z, n_z)]
@@ -170,13 +184,13 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 1.5e-3              # learning rate
+lr = 3.5e-3              # learning rate
 weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 denoise_sig = 0.15
 
-pxz_var_init = -np.log(400) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(800) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -380,11 +394,12 @@ if __name__ == "__main__":
     weight = 0.9993 #0.9999
     wavg_loss_array = []
     start_time = time.time() # Keep track of run time
-    
+    kl_lambda = 1
+
     # Now actually do the training
     for epoch in range(n_epochs):
         kl_lambda = np.clip(epoch/20, 0.1, 1) # slowly anneal
-        # kl_lambda = 1
+
         trainer(vae_model, optimizer, epoch, models, loss_array, kl_lambda)
         val_loss, val_rec_loss = test(vae_model, val_set)
         print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
@@ -408,7 +423,7 @@ if __name__ == "__main__":
         duration = time.time() - start_time
         print("%f seconds have elapsed since the training began\n" % duration)
     
-        if epoch == 10:
+        if epoch == 5:
             vae_model.varnet_weight += 1
     
         cutoff = 5
