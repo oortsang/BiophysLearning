@@ -100,12 +100,12 @@ if time_lagged:
 n_z = 1 # dimensionality of latent space
 
 # h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
-h_size   = int(np.sqrt(in_dim/n_z) * n_z)+2
-h_size_0 = int((in_dim/n_z)**(2/3) * n_z)+2
-h_size_1 = int((in_dim/n_z)**(1/3) * n_z)+2
-dropout_input  = 0.4
+h_size   = int(np.sqrt(in_dim/n_z) * n_z) + 3
+h_size_0 = int((in_dim/n_z)**(2/3) * n_z) + 3
+h_size_1 = int((in_dim/n_z)**(1/3) * n_z) + 3
+dropout_input  = 0.2
 dropout_hidden = 0.5
-dropout_low    = 0.2
+dropout_low    = 0.1
 
 # the layers themselves
 encode_layers_means = [nn.Dropout(dropout_input),
@@ -131,12 +131,12 @@ encode_layers_vars  = [nn.Dropout(dropout_input),
                        nn.ReLU(),
 
                        nn.Linear(h_size_0, h_size_1),
-                       nn.Dropout(dropout_hidden),
+                       nn.Dropout(dropout_low),
                        nn.ReLU(),
 
                        # nn.Linear(h_size_1, h_size_1),
                        # nn.Dropout(dropout_hidden),
-                       # nn.Tanh(),
+                       # nn.ReLU(),
 
                        nn.Linear(h_size_1, n_z),
                       ]
@@ -169,10 +169,15 @@ decode_layers_vars  = [nn.Linear(n_z, h_size_1),
                        nn.Dropout(dropout_hidden),
                        nn.ReLU(),
 
-                       nn.Linear(h_size_0, in_dim)
+                       nn.Linear(h_size_0, in_dim, bias = False)
                       ]
 
-propagator_layers   = [nn.Linear(n_z, n_z)]
+propagator_layers   = [nn.Linear(n_z, n_z+2),
+                       nn.ReLU(),
+                       nn.Linear(n_z+2, n_z+2),
+                       nn.ReLU(),
+                       nn.Linear(n_z+2, n_z),
+                      ]
 
 if not propagator:
     propagator_layers = None
@@ -184,19 +189,19 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 3.5e-3              # learning rate
+lr = 3e-3            # learning rate
 weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.15
+denoise_sig = 0.05
 
-pxz_var_init = -np.log(800) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
 # Finish preparing data
-train_amt = 0.6 # fraction of samples used as training
-val_amt   = 0.35 # fractions of samples used as validation
+train_amt = 0.8 # fraction of samples used as training
+val_amt   = 0.15 # fractions of samples used as validation
 test_amt  = 1 - train_amt - val_amt
 
 # DataLoaders to help with minibatching
@@ -318,39 +323,42 @@ if __name__ == "__main__":
     # However, if you want access to the variables by command line while running the script in interactive
     # mode, you may want to move everything outside the if statement.
 
+    # Easily switch the data sets the comparison is using
+    current_set = train_set # or sim_data
+
     # Compare against a naive guess of averages
-    naive = sim_data[-50000:,:in_dim].mean(0)
+    naive = current_set[-50000:,:in_dim].mean(0)
     # naive_loss = ((naive - sim_data.data[:,-in_dim:])**2).sum(1).mean()
-    naive_loss = square_loss(sim_data.data[:,-in_dim:], naive)
+    naive_loss = square_loss(current_set.data[:,:in_dim], naive)
     print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
 
     # Compare against PCA
     pca_start = time.time()
     pca = PCA()
-    pca_latent = pca.fit_transform(sim_data.data[:,:in_dim])
+    pca_latent = pca.fit_transform(current_set.data[:,:in_dim])
     pca_latent[:,n_z:] = 0
     pca_guesses = pca.inverse_transform(pca_latent)
     # pca_loss = ((pca_guesses - sim_data.data[:,-in_dim:])**2).sum(1).mean()
-    pca_loss = square_loss(sim_data.data[:,-in_dim:], pca_guesses)
+    pca_loss = square_loss(current_set.data[:,-in_dim:], pca_guesses)
     print("PCA gets a reconstruction loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
 
     # Compare against TICA
     tica_start = time.time()
-    tica = TICA(sim_data.data[:,:in_dim], dt)
-    tica_latent = tica.transform(sim_data.data[:,:in_dim])
+    tica = TICA(current_set.data[:,:in_dim], dt)
+    tica_latent = tica.transform(current_set.data[:,:in_dim])
     tica_latent[:,n_z:] = 0
     tica_guesses = tica.inv_transform(tica_latent)
     # tica_loss = square_loss(sim_data.data[:,-in_dim:], tica_guesses)
-    tica_loss = square_loss(sim_data.data[:,-in_dim:], tica_guesses)
+    tica_loss = square_loss(current_set.data[:,-in_dim:], tica_guesses)
     print("TICA gets a reconstruction loss of %f in %f seconds" % (tica_loss, time.time()-tica_start))
 
     # Compare against the desired result
-    desired = np.zeros((sim_data.data.shape[0], in_dim))
-    desired[:,0] = sim_data.data[:,0]
+    desired = np.zeros((current_set.data.shape[0], in_dim))
+    desired[:,0] = current_set.data[:,0]
     for i in range(desired.shape[1]-1):
-        desired[:,i+1] = sim_data.data[:,i+1].mean()
+        desired[:,i+1] = current_set.data[:,i+1].mean()
     # des_loss = ((desired - sim_data.data[:,-in_dim:])**2).sum(1).mean()
-    des_loss = square_loss(sim_data.data[:,-in_dim:], desired)
+    des_loss = square_loss(current_set.data[:,:-in_dim:], desired)
     print("Remembering just the first axis gives a loss of", des_loss)
 
     # Prepare for visualization
@@ -394,7 +402,7 @@ if __name__ == "__main__":
     weight = 0.9993 #0.9999
     wavg_loss_array = []
     start_time = time.time() # Keep track of run time
-    kl_lambda = 1
+    kl_lambda = 0.1 # 1
 
     # Now actually do the training
     for epoch in range(n_epochs):
@@ -423,7 +431,7 @@ if __name__ == "__main__":
         duration = time.time() - start_time
         print("%f seconds have elapsed since the training began\n" % duration)
     
-        if epoch == 5:
+        if epoch == 10:
             vae_model.varnet_weight += 1
     
         cutoff = 5
@@ -446,6 +454,12 @@ if __name__ == "__main__":
     vae_model.latent_plot(mode = 'd', axes = (0,))
     vae_model.plot_test(axes = (6,1), dims = (0,1,2,3,99))
     # vae_model.plot_test()
+    xs = np.arange(-3,3, 0.01)
+    ys = vae_model.propagator_net(torch.tensor(xs, dtype=torch.float)[:, np.newaxis]).detach().numpy()
+    plt.plot(xs, ys)
+    plt.plot(xs, xs)
+    plt.show()
+
     
     if False:
         for i in range(len(models)):

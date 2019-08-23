@@ -13,7 +13,7 @@ from sklearn.decomposition import PCA
 from tica import TICA
 
 start_cutoff = 0
-dt = 50 # time lag in frames
+dt = 10 # time lag in frames
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
 ########## Class to hold the data we load ##########
@@ -121,13 +121,15 @@ def shared_preprocessing(x):
     # whitened = pca.fit_transform(norm_data)
     whitened = whiten(norm_data)
     print("Running TICA...", end = '')
+    from sys import stdout
+    stdout.flush()
     tica = TICA(whitened, dt, kinetic_map = True)
     # tica = TICA(whitened, dt, kinetic_map = False)
     tic = tica.transform(whitened)
     print(" done!")
 
     # tic = whiten(scrambler(tic[:, : 100]))
-    return tic[:, :200 ]
+    return tic[:, : 50]
 
 ##########  The actual production of new dataset objects  ##########
 
@@ -148,10 +150,10 @@ def convolve(data):
 
 def time_lag(data):
     """Put the current coordinates followed by the coordinates dt steps in the future"""
-    # Convolve
+    # # Convolve
     data = conver(data)
-    # # Whiten the data
-    # data = whiten(data)
+    # # # Whiten the data
+    # # data = whiten(data)
 
     # # run tica
     # tica = TICA(data, dt, kinetic_map = True)

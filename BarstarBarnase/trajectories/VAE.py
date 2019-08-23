@@ -80,20 +80,28 @@ class VAE(nn.Module):
         # Ensure the networks have the right data types
         # PyTorch can be touchy if some variables are floats and others are doubles
         self.data_type = data_type
-        if self.data_type == torch.float:
-            self.encode_net_means = self.encode_net_means.float()
-            self.encode_net_vars  = self.encode_net_vars.float()
-            self.decode_net_means = self.decode_net_means.float()
-            self.decode_net_vars  = self.decode_net_vars.float()
-            if self.time_lagged and propagator_layers is not None:
-                self.propagator_net = self.propagator_net.float()
-        else:
-            self.encode_net_means = self.encode_net_means.double()
-            self.encode_net_vars  = self.encode_net_vars.double()
-            self.decode_net_means = self.decode_net_means.double()
-            self.decode_net_vars  = self.decode_net_vars.double()
-            if self.time_lagged and propagator_layers is not None:
-                self.propagator_net = self.propagator_net.double()
+        converter = lambda net: net.float() if self.data_type == torch.float else net.double()
+        self.encode_net_means = converter(self.encode_net_means)
+        self.encode_net_vars  = converter(self.encode_net_vars)
+        self.decode_net_means = converter(self.decode_net_means)
+        self.decode_net_vars  = converter(self.decode_net_vars)
+        if self.time_lagged and propagator_layers is not None:
+            self.propagator_net = converter(self.propagator_net)
+
+        # if self.data_type == torch.float:
+        #     self.encode_net_means = self.encode_net_means.float()
+        #     self.encode_net_vars  = self.encode_net_vars.float()
+        #     self.decode_net_means = self.decode_net_means.float()
+        #     self.decode_net_vars  = self.decode_net_vars.float()
+        #     if self.time_lagged and propagator_layers is not None:
+        #         self.propagator_net = self.propagator_net.float()
+        # else:
+        #     self.encode_net_means = self.encode_net_means.double()
+        #     self.encode_net_vars  = self.encode_net_vars.double()
+        #     self.decode_net_means = self.decode_net_means.double()
+        #     self.decode_net_vars  = self.decode_net_vars.double()
+        #     if self.time_lagged and propagator_layers is not None:
+        #         self.propagator_net = self.propagator_net.double()
 
     def encode(self, x):
         """Encoding from x (input) to z (latent).
@@ -112,7 +120,7 @@ class VAE(nn.Module):
         # otherwise, we just return the maximum likelihood mu
         # Can always change this in the __init__ function
         res = mu
-        if (self.variational and self.training) or self.always_random_sample:
+        if self.variational and (self.training or self.always_random_sample):
             eps_shape = log_var.shape
             eps = torch.tensor(np.random.normal(0, 1, eps_shape), dtype=self.data_type)
             # eps contains a randomly pulled number for each example in the minibatch
@@ -165,7 +173,7 @@ class VAE(nn.Module):
             all_means[0], all_lvs[0] = xp_dist
 
             # propagate in latent space and decode
-            self.z_fut = self.propagator_net(self.z_fut)
+            self.z_fut = self.propagator_net(self.z_fut) # + self.z_fut
             all_means[1+0], all_lvs[1+0] = self.decode(self.z_fut)
             if return_np:
                 all_means = all_means.detach().numpy()
@@ -182,7 +190,7 @@ class VAE(nn.Module):
         # -log p(x|z) = (x-Dm(z))**2/(2Ds(z)) + log Ds(z) + 0.5*log(2 pi)
 
         if not self.variational:
-            self.rec_loss = torch.sum((pred - truth)**2) # maybe replace with a pytorch function
+            self.rec_loss = torch.sum((pred_means - truth)**2) # maybe replace with a pytorch function
         else:
             # self.rec_loss = 0.5*(pred_lvs+torch.exp(-pred_lvs)*(pred_means-truth)**2).sum(1)
             self.rec_loss = 0.5*(np.log(2*np.pi) + pred_lvs
@@ -228,7 +236,7 @@ class VAE(nn.Module):
         self.eval()
         data = torch.tensor(data, dtype=self.data_type)
         _, recon, _ = self(data)
-        return recon[1 if future else 0].detach().numpy()
+        return recon[1 if future and self.time_lagged else 0].detach().numpy()
 
     def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0, dims = None):
         """Plots the predictions of the model and its latent variables"""
