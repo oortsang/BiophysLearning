@@ -103,7 +103,7 @@ n_z = 1 # dimensionality of latent space
 h_size   = int(np.sqrt(in_dim/n_z) * n_z) + 2
 h_size_0 = int((in_dim/n_z)**(2/3) * n_z) + 2
 h_size_1 = int((in_dim/n_z)**(1/3) * n_z) + 2
-dropout_input  = 0.2
+dropout_input  = 0.3
 dropout_hidden = 0.4
 dropout_low    = 0.1
 
@@ -193,7 +193,7 @@ weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the ma
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 denoise_sig = 0.05
 
-pxz_var_init = -np.log(400) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(800) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -400,7 +400,7 @@ if __name__ == "__main__":
     models = [] # Stores old models in case an older one did better
     loss_array = []
     val_loss_array = []
-    weight = 0.9993 #0.9999
+    weight = 0.999 #0.9999
     wavg_loss_array = []
     start_time = time.time() # Keep track of run time
     kl_lambda = 0.1 # 1
@@ -437,7 +437,7 @@ if __name__ == "__main__":
     
         cutoff = 5
         # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
-        if epoch >= 15 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
+        if epoch >= 10 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
             print("Stopping training since the validation error has increased over the past 3 epochs.\n"
                   "Replacing vae_model with the most recent model with lowest total validation loss.")
             break

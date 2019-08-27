@@ -17,7 +17,7 @@ from tica import TICA
 start_cutoff = 0
 dt = 10 # time lag in frames
 support = 20 # dt // 5 # span of data to blur over
-save_dims = 100 # how many dimensions will be saved?
+save_dims = 200 # how many dimensions will be saved?
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
 ########## Class to hold the data we load ##########
@@ -140,8 +140,8 @@ def shared_preprocessing(x):
     print("Running TICA...", end = '')
     stdout.flush()
     tica_time = time.time()
-    tica = TICA(whitened, dt, kinetic_map = True)
-    # tica = TICA(whitened, dt, kinetic_map = False)
+    # tica = TICA(whitened, dt, kinetic_map = True)
+    tica = TICA(whitened, dt, kinetic_map_scaling = True)
     tic = tica.transform(whitened)
     print(" done! (%.3f s)" % (time.time() - tica_time))
 
@@ -157,10 +157,10 @@ def normalize(data):
 
 def convolve(data):
     """Set each dimension to have mean 0, variance 1 then convolves over the whole thing using a spline"""
-    conv_data = conver(data[:, 1:], data[:, 0])
+    conv_data = conver(data[:, 1:], data[:, 0])[:, 1:]
 
     # # run tica
-    # tica = TICA(conv_data, dt, kinetic_map = True)
+    # tica = TICA(conv_data, dt, kinetic_map_scaling = True)
     # conv_data = tica.transform(conv_data)
 
     return conv_data

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 class TICA():
     """Implemented based on description in Frank Noé, Machine Learning for Molecular Dynamics on Long Timescales, 2018 (https://arxiv.org/abs/1812.07669)"""
-    def __init__(self, x, dt, kinetic_map = True):
+    def __init__(self, x, dt, kinetic_map_scaling = True):
         """Takes time series data"""
         # coo = np.cov(x[:-dt, :].T)
         # cot = np.cov(x[dt:, :].T)
@@ -20,24 +20,30 @@ class TICA():
         eigvals, eigvecs = eig(cot, coo)
         # eigvals, eigvecs = eigh(cot, coo, eigvals_only = False) # disagrees with eig...
 
-        if kinetic_map:
-            eigvecs *= np.real(eigvals[np.newaxis, :])
 
-        ordering = np.argsort(-eigvals) # descending order
-        self.eigvals = eigvals[ordering]
-        self.eigvecs = np.real(eigvecs[ordering])
+        self.kinetic_map_scaling = kinetic_map_scaling
+
+        # import pdb; pdb.set_trace()
+        ordering = np.argsort(-(eigvals)) # descending order
+        self.eigvals = np.real(eigvals[ordering])
+        self.eigvecs = np.real(eigvecs[ordering]) # eigvecs are [:,i] so we reorder the (:) dim
+        print(self.eigvals)
+
         self.evec_inv = inv(self.eigvecs)
-
         # find the propagator
         self.prop = inv(coo) @ cot # see paper...
 
     def transform(self, xx):
         """Transforms to tIC space"""
         xp =  xx @ self.evec_inv.T
+        if self.kinetic_map_scaling:
+            xp = xp * self.eigvals[np.newaxis]
         return xp
 
     def inv_transform(self, xx):
         """Transforms from tIC space to the input space"""
+        if self.kinetic_map_scaling:
+            xx = xx / self.eigvals[np.newaxis]
         xp = xx @ self.eigvecs.T
         return xp
 
