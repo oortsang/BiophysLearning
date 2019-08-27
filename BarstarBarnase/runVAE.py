@@ -103,9 +103,9 @@ n_z = 1 # dimensionality of latent space
 h_size   = int(np.sqrt(in_dim/n_z) * n_z) + 2
 h_size_0 = int((in_dim/n_z)**(2/3) * n_z) + 2
 h_size_1 = int((in_dim/n_z)**(1/3) * n_z) + 2
-dropout_input  = 0.0
-dropout_hidden = 0.0
-dropout_low    = 0.0
+dropout_input  = 0.2
+dropout_hidden = 0.4
+dropout_low    = 0.1
 
 mean_act = nn.ReLU
 var_act  = nn.ReLU
@@ -172,8 +172,8 @@ decode_layers_vars  = [nn.Linear(n_z, h_size_1),
 
 propagator_layers   = [nn.Linear(n_z, n_z+2),
                        nn.ReLU(),
-                       nn.Linear(n_z+2, n_z+2),
-                       nn.ReLU(),
+                       # nn.Linear(n_z+2, n_z+2),
+                       # nn.ReLU(),
                        nn.Linear(n_z+2, n_z),
                       ]
 
@@ -187,8 +187,8 @@ optim_fn = optim.Adam
     # different optimization algorithms -- Adam tries to adaptively change momentum (memory of
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
-lr = 3e-3            # learning rate
-weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+lr = 1e-3            # learning rate
+weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 denoise_sig = 0.05
@@ -198,8 +198,8 @@ pxz_var_init = -np.log(400) # How much weight to give to the KL-Divergence term 
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
 # Finish preparing data
-train_amt = 0.8 # fraction of samples used as training
-val_amt   = 0.15 # fractions of samples used as validation
+train_amt = 0.7 # fraction of samples used as training
+val_amt   = 0.25 # fractions of samples used as validation
 test_amt  = 1 - train_amt - val_amt
 
 # DataLoaders to help with minibatching
@@ -211,9 +211,9 @@ if (train_amt == 1):
 else:
     delay = 0
     tot_size = len(sim_data)
-    if time_lagged:
-        delay = 2 * dt
-        tot_size -= 2 * delay # wait between sets to decrease correlation
+    # if time_lagged:
+    #     delay = 2 * dt
+    #     tot_size -= 2 * delay # wait between sets to decrease correlation
 
     # Scale fractions to number of examples
     train_size = int(tot_size * train_amt)
@@ -225,10 +225,13 @@ else:
     val_start  = train_size + delay
     test_start = val_start+val_size + delay
 
+    # Shuffle the order of examples
+    rnd_sim_data = sim_data.get_permutation()
+
     # Make the sets and training loader
-    train_set  = sim_data.get_slice(0, train_size)
-    val_set    = sim_data.get_slice(val_start, val_start+val_size)
-    test_set   = sim_data.get_slice(test_start, test_start+test_size)
+    train_set  = rnd_sim_data.get_slice(0, train_size)
+    val_set    = rnd_sim_data.get_slice(val_start, val_start+val_size)
+    test_set   = rnd_sim_data.get_slice(test_start, test_start+test_size)
     train_loader = DataLoader(train_set, batch_size = batch_size, shuffle = True, num_workers = threads)
 
 

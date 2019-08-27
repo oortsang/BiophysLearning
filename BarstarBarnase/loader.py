@@ -47,6 +47,12 @@ class MyData(data.TensorDataset):
         new_set = MyData(data = self.data[:][np.arange(start, stop, skip)])
         return new_set
 
+    def get_permutation(self, ordering = None):
+        if ordering is None:
+            ordering = np.random.permutation((self.data[:]).shape[0])
+        new_set = MyData(data = self.data[:][ordering])
+        return new_set
+
 ##########  Helper functions  ##########
 
 def remove_means(x, norm = False):

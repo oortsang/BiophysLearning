@@ -22,7 +22,7 @@ output_file = "data/SimFeatures.h5"
 num = 2
 top = md.load_pdb(top_file)
 main_traj = md.load_dcd(traj_file(num), top = top)
-files = [0, 1, 2, 3] # np.arange(3)
+files = np.arange(6)
 
 # Parameters for get_contact_pairs
 cutoff_dist = 1.2 # nm
