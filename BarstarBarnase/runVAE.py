@@ -81,7 +81,7 @@ model_param_fname = "data/model_parameters"
 variational = True
 time_lagged = True
 propagator  = True
-denoising   = False
+denoising   = True
 
 if time_lagged:
     sim_data = tla_sim_data
@@ -89,7 +89,7 @@ else:
     sim_data = con_sim_data
 
 n_epochs = 100
-batch_size = 50
+batch_size = 100
 
 # Network dimensions
 # in_dim = 8 # input dimension
@@ -103,8 +103,8 @@ n_z = 1 # dimensionality of latent space
 h_size   = int(np.sqrt(in_dim/n_z) * n_z) + 2
 h_size_0 = int((in_dim/n_z)**(2/3) * n_z) + 2
 h_size_1 = int((in_dim/n_z)**(1/3) * n_z) + 2
-dropout_input  = 0.3
-dropout_hidden = 0.4
+dropout_input  = 0.4
+dropout_hidden = 0.6
 dropout_low    = 0.1
 
 mean_act = nn.ReLU
@@ -172,8 +172,8 @@ decode_layers_vars  = [nn.Linear(n_z, h_size_1),
 
 propagator_layers   = [nn.Linear(n_z, n_z+2),
                        nn.ReLU(),
-                       # nn.Linear(n_z+2, n_z+2),
-                       # nn.ReLU(),
+                       nn.Linear(n_z+2, n_z+2),
+                       nn.ReLU(),
                        nn.Linear(n_z+2, n_z),
                       ]
 
@@ -188,12 +188,12 @@ optim_fn = optim.Adam
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
 lr = 1e-3            # learning rate
-weight_decay = 1e-4    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.05
+denoise_sig = 0.005
 
-pxz_var_init = -np.log(800) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -345,13 +345,14 @@ if __name__ == "__main__":
 
     # Compare against TICA
     tica_start = time.time()
-    tica = TICA(current_set.data[:,:in_dim], dt)
+    tica = TICA(current_set.data[:,:in_dim], dt, kinetic_map_scaling = False)
     tica_latent = tica.transform(current_set.data[:,:in_dim])
     tica_latent[:,n_z:] = 0
     tica_guesses = tica.inv_transform(tica_latent)
     # tica_loss = square_loss(sim_data.data[:,-in_dim:], tica_guesses)
     tica_loss = square_loss(current_set.data[:,-in_dim:], tica_guesses)
-    print("TICA gets a reconstruction loss of %f in %f seconds" % (tica_loss, time.time()-tica_start))
+    print("TICA gets a reconstruction loss of %f in %f seconds (It hasn't been feeling well lately...)" % (tica_loss, time.time()-tica_start))
+    # import pdb; pdb.set_trace()
 
     # Compare against the desired result
     desired = np.zeros((current_set.data.shape[0], in_dim))

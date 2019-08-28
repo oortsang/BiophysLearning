@@ -67,6 +67,7 @@ def get_contact_pairs():
 
 def load_contact_pairs(file=cps_file):
     """Loads the list of contact pairs from disk"""
+    # should really check if the file exists first...
     cps = np.load(cps_file)
     return cps
 

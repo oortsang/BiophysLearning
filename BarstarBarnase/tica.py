@@ -17,17 +17,19 @@ class TICA():
         coo = (xo-muo).T @ (xo-muo) + (xt-mut).T @ (xt-mut) # 0.05*np.eye(muo.shape[0])
         cot = (xo-muo).T @ (xt-mut) + (xt-mut).T @ (xo-muo)
 
-        eigvals, eigvecs = eig(cot, coo)
+        eigvals, eigvecs = eig(cot.astype(np.double), coo.astype(np.double))
         # eigvals, eigvecs = eigh(cot, coo, eigvals_only = False) # disagrees with eig...
 
 
         self.kinetic_map_scaling = kinetic_map_scaling
 
+        # if kinetic_map_scaling:
+        #     eigvecs /= np.real(eigvals)[np.newaxis]
+
         # import pdb; pdb.set_trace()
         ordering = np.argsort(-(eigvals)) # descending order
         self.eigvals = np.real(eigvals[ordering])
         self.eigvecs = np.real(eigvecs[ordering]) # eigvecs are [:,i] so we reorder the (:) dim
-        print(self.eigvals)
 
         self.evec_inv = inv(self.eigvecs)
         # find the propagator
@@ -38,14 +40,15 @@ class TICA():
         xp =  xx @ self.evec_inv.T
         if self.kinetic_map_scaling:
             xp = xp * self.eigvals[np.newaxis]
-        return xp
+        return xp.astype(np.float)
 
     def inv_transform(self, xx):
         """Transforms from tIC space to the input space"""
+        # I think this is broken...
         if self.kinetic_map_scaling:
             xx = xx / self.eigvals[np.newaxis]
         xp = xx @ self.eigvecs.T
-        return xp
+        return xp.astype(np.float)
 
 
 if __name__ == "__main__":

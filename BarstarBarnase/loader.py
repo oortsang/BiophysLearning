@@ -15,9 +15,9 @@ import time
 from tica import TICA
 
 start_cutoff = 0
-dt = 10 # time lag in frames
-support = 20 # dt // 5 # span of data to blur over
-save_dims = 200 # how many dimensions will be saved?
+dt = 20 # time lag in frames
+support = 30 # dt // 5 # span of data to blur over
+save_dims = None # how many dimensions will be saved? None means save all
 force_recompute = False # recompute the transformations even if there isn't a new simulation or any updates to this file?
 
 ########## Class to hold the data we load ##########
