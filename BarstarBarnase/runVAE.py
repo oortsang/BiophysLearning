@@ -66,6 +66,7 @@ from loader import pca_sim_data
 from loader import tla_sim_data
 from loader import con_sim_data
 from loader import dt           # time lag used in dt
+from loader import whiten
 print("... finished loading!")
 
 # torch.manual_seed(1)
@@ -103,9 +104,9 @@ n_z = 1 # dimensionality of latent space
 h_size   = int(np.sqrt(in_dim/n_z) * n_z) + 2
 h_size_0 = int((in_dim/n_z)**(2/3) * n_z) + 2
 h_size_1 = int((in_dim/n_z)**(1/3) * n_z) + 2
-dropout_input  = 0.4
+dropout_input  = 0.5
 dropout_hidden = 0.6
-dropout_low    = 0.1
+dropout_low    = 0.2
 
 mean_act = nn.ReLU
 var_act  = nn.ReLU
@@ -170,11 +171,11 @@ decode_layers_vars  = [nn.Linear(n_z, h_size_1),
                        nn.Linear(h_size_0, in_dim, bias = False)
                       ]
 
-propagator_layers   = [nn.Linear(n_z, n_z+2),
+propagator_layers   = [nn.Linear(n_z, n_z+3),
                        nn.ReLU(),
-                       nn.Linear(n_z+2, n_z+2),
+                       nn.Linear(n_z+3, n_z+3),
                        nn.ReLU(),
-                       nn.Linear(n_z+2, n_z),
+                       nn.Linear(n_z+3, n_z),
                       ]
 
 if not propagator:
@@ -188,10 +189,10 @@ optim_fn = optim.Adam
     # changes from the last update) and has different learning rates for each parameter.
     # But standard Stochastic Gradient Descent is supposed to generalize better...
 lr = 1e-3            # learning rate
-weight_decay = 1e-5    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
+weight_decay = 1e-6    # weight decay -- how much of a penalty to give to the magnitude of network weights (idea being that it's
     # easier to get less general results if the network weights are too big and mostly cancel each other out (but don't quite))
 momentum = 1e-5        # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
-denoise_sig = 0.005
+denoise_sig = 0.001
 
 pxz_var_init = -np.log(500) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
@@ -317,6 +318,13 @@ def test(model, dataset):
         # rec_loss = square_loss(out_means[1], answers).item()
     return loss, rec_loss
 
+def plot_prop():
+    xs = np.arange(-3,3, 0.01)
+    ys = vae_model.propagator_net(torch.tensor(xs, dtype=torch.float)[:, np.newaxis]).detach().numpy()
+    plt.plot(xs, ys)
+    plt.plot(xs, xs)
+    plt.show()
+
 ### Now for the actual running and comparison against other methods ###
 
 if __name__ == "__main__":
@@ -345,13 +353,14 @@ if __name__ == "__main__":
 
     # Compare against TICA
     tica_start = time.time()
-    tica = TICA(current_set.data[:,:in_dim], dt, kinetic_map_scaling = False)
-    tica_latent = tica.transform(current_set.data[:,:in_dim])
+    whitened = whiten(current_set.data[:,:in_dim])
+    tica_comp = TICA(whitened, dt, kinetic_map_scaling = False)
+    tica_latent = tica_comp.transform(whitened)
     tica_latent[:,n_z:] = 0
-    tica_guesses = tica.inv_transform(tica_latent)
+    tica_guesses = tica_comp.inv_transform(tica_latent)
     # tica_loss = square_loss(sim_data.data[:,-in_dim:], tica_guesses)
     tica_loss = square_loss(current_set.data[:,-in_dim:], tica_guesses)
-    print("TICA gets a reconstruction loss of %f in %f seconds (It hasn't been feeling well lately...)" % (tica_loss, time.time()-tica_start))
+    print("TICA gets a reconstruction loss of %f in %f seconds" % (tica_loss, time.time()-tica_start))
     # import pdb; pdb.set_trace()
 
     # Compare against the desired result
@@ -360,7 +369,7 @@ if __name__ == "__main__":
     for i in range(desired.shape[1]-1):
         desired[:,i+1] = current_set.data[:,i+1].mean()
     # des_loss = ((desired - sim_data.data[:,-in_dim:])**2).sum(1).mean()
-    des_loss = square_loss(current_set.data[:,:-in_dim:], desired)
+    des_loss = square_loss(current_set.data[:,-in_dim:], desired)
     print("Remembering just the first axis gives a loss of", des_loss)
 
     # Prepare for visualization
@@ -456,12 +465,7 @@ if __name__ == "__main__":
     vae_model.latent_plot(mode = 'd', axes = (0,))
     vae_model.plot_test(axes = (6,1), dims = (0,1,2,3,99))
     # vae_model.plot_test()
-    xs = np.arange(-3,3, 0.01)
-    ys = vae_model.propagator_net(torch.tensor(xs, dtype=torch.float)[:, np.newaxis]).detach().numpy()
-    plt.plot(xs, ys)
-    plt.plot(xs, xs)
-    plt.show()
-
+    plot_prop()
     
     if False:
         for i in range(len(models)):

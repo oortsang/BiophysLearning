@@ -90,14 +90,14 @@ def bspln3(x, support):
 
 def whiten(x):
     """Whitens using svd from np.linalg"""
-    print("Whitening...", end='')
+    # print("Whitening...", end='')
     covar = np.cov(x[:-dt, :].T)
     u, s, vh = np.linalg.svd(covar)
     covar_sqinv = u @ np.diag(np.sqrt(1/s)) @ vh
     xw = x @ covar_sqinv.T
     # xw = u @ vh
     xw.astype(x.dtype)
-    print(" done!")
+    # print(" done!")
     return xw
 
 def conver(x, indices = None, kfunc = gaussian_blur, support = support):
@@ -129,21 +129,25 @@ def shared_preprocessing(x):
     # pca = PCA()
     # x_no_idcs = pca.fit_transform(x_no_idcs[start_cutoff:])
 
-    norm_data = np.zeros(x_no_idcs.shape, dtype = np.float32)[start_cutoff:]
+    # norm_data = np.zeros(x_no_idcs.shape, dtype = np.float32)[start_cutoff:]
     clipped_data = x_no_idcs[start_cutoff:, :]
     norm_data = remove_means(clipped_data)
 
     # pca = PCA(whiten = True)
     # whitened = pca.fit_transform(norm_data)
+    print("Whitening...", end = '')
     whitened = whiten(norm_data)
+    print(" done!")
 
-    print("Running TICA...", end = '')
-    stdout.flush()
-    tica_time = time.time()
-    # tica = TICA(whitened, dt, kinetic_map = True)
-    tica = TICA(whitened, dt, kinetic_map_scaling = True)
-    tic = tica.transform(whitened)
-    print(" done! (%.3f s)" % (time.time() - tica_time))
+    # print("Running TICA...", end = '')
+    # stdout.flush()
+    # tica_time = time.time()
+    # # tica = TICA(whitened, dt, kinetic_map = True)
+    # tica = TICA(whitened, dt, kinetic_map_scaling = True)
+    # tic = tica.transform(whitened)
+    # print(" done! (%.3f s)" % (time.time() - tica_time))
+    # tic = remove_means(tic)
+    tic = whitened
 
     # tic = whiten(scrambler(tic[:, : 100]))
     output = np.concatenate((idcs[:, np.newaxis], tic[:, :save_dims]), axis = 1)
