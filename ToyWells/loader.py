@@ -148,7 +148,7 @@ def time_lag(dataset):
     # Whiten the data
     mean_free_data = whiten(mean_free_data)
 
-    mean_free_data = scrambler(mean_free_data)
+    # mean_free_data = scrambler(mean_free_data)
     mean_free_data = whiten(mean_free_data)
 
     # copy over data from dt timesteps later

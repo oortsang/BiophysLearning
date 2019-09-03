@@ -87,7 +87,6 @@ class VAE(nn.Module):
         self.decode_net_vars  = converter(self.decode_net_vars)
         if self.time_lagged and propagator_layers is not None:
             self.propagator_net = converter(self.propagator_net)
-
         # if self.data_type == torch.float:
         #     self.encode_net_means = self.encode_net_means.float()
         #     self.encode_net_vars  = self.encode_net_vars.float()
@@ -130,7 +129,7 @@ class VAE(nn.Module):
     def decode(self, z):
         """Takes a single z sample and attempts to reconstruct the inputs"""
         output_mu = self.decode_net_means(z)
-        output_lv = self.out_lv_ests + torch.clamp(self.varnet_weight, 0,1) * self.decode_net_vars(z)
+        output_lv = self.out_lv_ests  + torch.clamp(self.varnet_weight, 0,1) * self.decode_net_vars(z)
         self.xp = (output_mu, output_lv)
         return self.xp
         # tmp = self.prelim_net(z)
@@ -140,16 +139,15 @@ class VAE(nn.Module):
         # return self.xp
 
     # run through encoder, sampler, and decoder
-    def forward(self, x, return_np = False):
+    def forward(self, x):
         """Calls the other functions to run a batch/data set through the proper networks.
         To deal with the possibility of propagation, we return a tuple - first element is
         is the number of future steps to expect in the tensor...
         """
         # if we feed in too many dimensions, just take the first self.in_dim
-        if x.__class__ == np.ndarray:
-            x = torch.tensor(x, dtype = self.data_type)
         if x.dim() == 2 and x.shape[-1] != self.in_dim:
             x = x[:, :self.in_dim]
+        x = x.float() if self.data_type == torch.float else x.double()
         z_dist    = self.encode(x)        # 1. Encode
         z_sample  = self.sample(*z_dist)  # 2. Sample
         xp_dist   = self.decode(z_sample) # 3. Decode
@@ -173,15 +171,12 @@ class VAE(nn.Module):
             all_means[0], all_lvs[0] = xp_dist
 
             # propagate in latent space and decode
-            self.z_fut = self.propagator_net(self.z_fut) # + self.z_fut
+            self.z_fut = self.propagator_net(self.z_fut)
             all_means[1+0], all_lvs[1+0] = self.decode(self.z_fut)
-            if return_np:
-                all_means = all_means.detach().numpy()
-                all_lvs   = all_lvs.detach().numpy()
             return (fut_steps, all_means, all_lvs)
 
 
-    def vae_loss(self, pred_means, pred_lvs, truth, kl_lambda = 1):
+    def vae_loss(self, pred_means, pred_lvs, truth):
         # -log p(x) = - E[log p(x|z)] + KL[q(z)||p(z)]
         #
         # E[log P (x | z)] - Reconstruction part
@@ -217,7 +212,7 @@ class VAE(nn.Module):
         # else:
         #     reg_loss = 0
         # return (self.rec_loss + kl_div + 0.01 * reg_loss) / pred_means.shape[0]
-        return (self.rec_loss + kl_lambda * kl_div) / pred_means.shape[0]
+        return (self.rec_loss + kl_div) / pred_means.shape[0]
 
     def just_encode(self, x):
         """Runs data through just the encoder"""
@@ -227,7 +222,7 @@ class VAE(nn.Module):
         z_dist = self.encode(x)
         return z_dist[0].detach().numpy() # returns just the means
 
-    def run_data(self, data=None, future = True):
+    def run_data(self, data=None):
         """Runs the whole dataset through the network"""
         if data is None:
             if self.pref_dataset is None:
@@ -236,15 +231,12 @@ class VAE(nn.Module):
         self.eval()
         data = torch.tensor(data, dtype=self.data_type)
         _, recon, _ = self(data)
-        return recon[1 if future and self.time_lagged else 0].detach().numpy()
+        return recon[0].detach().numpy()
 
-    def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0, dims = None):
+    def plot_test(self, data=None, plot = True, axes=(None,1), ret = False, dt = 0):
         """Plots the predictions of the model and its latent variables"""
         if axes[0] is None:
             axes = (1+self.in_dim, axes[1])
-
-        if dims is None:
-            dims = range(min(self.in_dim, axes[0]-1))
 
         if data is None:
             if self.pref_dataset is None:
@@ -267,19 +259,18 @@ class VAE(nn.Module):
                          )
             )
             plt.plot(latents)
-            # for i in range(min(self.in_dim, axes[0]-1))
-            for i in range(len(dims)):
+            for i in range(self.in_dim):
                 plt.subplot(*axes, 2+i)
                 plt.title("Particle %d" % (i+1))
                 # pdb.set_trace()
-                plt.plot(bigdata[:,dims[i]], label = ("Input %d"% (dims[i]+1)))
-                plt.plot(range(dt,dt+outputs.shape[0]), outputs[:,i], label = ("Reconstruction %d" % (dims[i]+1)))
+                plt.plot(bigdata[:,i], label = ("Input %d"% (i+1)))
+                plt.plot(range(dt,dt+outputs.shape[0]), outputs[:,i], label = ("Reconstruction %d" % (i+1)))
                 plt.legend(loc = 'lower right')
             plt.show()
         if ret:
             return outputs, latents
 
-    def latent_plot(self, mode='reconstruction', data=None, bins = 60, save_name = None, show = True, axes = (0, 1)):
+    def latent_plot2d(self, mode='reconstruction', data=None, bins = 60, save_name = None, show = True):
         """Note that this is only designed for 2D spaces
 
         Arguments:
@@ -292,26 +283,8 @@ class VAE(nn.Module):
                 return None
             data = self.pref_dataset
 
-        if mode == 'latent dist' or mode == 'd' \
-            or mode == 'latent potential well' or mode == 'w':
-
-            # plot the distribution of latent variables in latent space
-            latents = self.just_encode(torch.tensor(data, dtype=self.data_type)) # get the mean score for each point on the grid
-            Hlat, xedges = np.histogram(latents[:, axes], bins=bins)
-            xpts = 0.5*(xedges[1:] + xedges[:-1])
-
-            if mode == 'latent potential well' or mode == 'w':
-                plt.plot(xpts, -np.log(Hlat+0.001)) # put a little padding in case of Hlat=0
-            else:
-                plt.plot(xpts, Hlat)
-            if save_name is not None:
-                plt.savefig(save_name)
-            if show:
-                plt.show()
-            return
-
         # construct a mesh and histogram from the particle's distribution in space
-        H, x_edges, y_edges = np.histogram2d(data[:,axes[0]], data[:,axes[1]], bins = bins)
+        H, x_edges, y_edges = np.histogram2d(data[:,0], data[:,1], bins = bins)
         x_pts = 0.5 * (x_edges[:-1] + x_edges[1:])
         y_pts = 0.5 * (y_edges[:-1] + y_edges[1:])
         # grid = np.transpose([np.tile(x_pts, y_pts.shape[0]), np.repeat(y_pts, x_pts.shape[0])])
@@ -324,8 +297,17 @@ class VAE(nn.Module):
         # overlay_color = np.array((1,0.56, 0, 0))*0.65
         # inv_overlay_color = np.array((1-0.65,1-0.56*0.65, 1, 0))
 
-
-        if mode == 'latent potential well' or mode == 'w':
+        if mode == 'latent dist' or mode == 'd':
+            # plot the distribution of latent variables in latent space
+            latents = self.just_encode(torch.tensor(data, dtype=self.data_type)).flatten() # get the mean score for each point on the grid
+            Hlat, xedges = np.histogram(latents, bins=bins)
+            xpts = 0.5*(xedges[1:] + xedges[:-1])
+            plt.plot(xpts, Hlat)
+            if save_name is not None:
+                plt.savefig(save_name)
+            if show:
+                plt.show()
+        elif mode == 'latent potential well' or mode == 'w':
             # plot potential well in latent space
             latents = self.just_encode(torch.tensor(data, dtype=self.data_type)).flatten() # get the mean score for each point on the grid
             Hlat, xedges = np.histogram(latents, bins=bins)
@@ -335,8 +317,6 @@ class VAE(nn.Module):
                 plt.savefig(save_name)
             if show:
                 plt.show()
-            else:
-                plt.close()
         elif mode == 'latent val' or mode == 'l':
             # get the mean score for each point on the grid
             latents = self.just_encode(grid).reshape(bins, bins)
@@ -349,16 +329,12 @@ class VAE(nn.Module):
                 plt.savefig(save_name)
             if show:
                 plt.show()
-            else:
-                plt.close()
         elif mode == 'background' or mode == 'b':
             plt.imshow(H, cmap = 'jet', alpha = 1)
             if save_name is not None:
                 plt.savefig(save_name)
             if show:
                 plt.show()
-            else:
-                plt.close()
         else:
             # initialize background image
             plt.imshow(H, cmap = 'jet', alpha = 0.67)
@@ -376,7 +352,7 @@ class VAE(nn.Module):
                 _, rec_points, _ = self(torch.tensor(data, dtype=self.data_type))
                 rec_points = rec_points[0].clone().detach().numpy()
 
-                H_rec, _, _ = np.histogram2d(rec_points[:,axes[0]], rec_points[:,axes[1]], bins=(x_edges,y_edges))
+                H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
                 H_rec -= H_rec.min()
                 H_rec /= 6 * H_rec.std()
                 pic = np.clip(H_rec[..., np.newaxis], 0, 1) * overlay_color
@@ -386,8 +362,7 @@ class VAE(nn.Module):
                 self.always_random_sample = prev_sample
                 self.training = prev_train
 
-            elif mode == 'random reconstruction' or mode == 'rr' \
-                 or mode == 'rc' or mode == 'random cloud':
+            elif mode == 'random reconstruction' or mode == 'rr':
                 # plt.close()
                 # attempts to reconstruct the original data
                 prev_sample = self.always_random_sample
@@ -399,7 +374,7 @@ class VAE(nn.Module):
                 _, rec_points, _ = self(torch.tensor(data, dtype=self.data_type))
                 rec_points = rec_points[0].clone().detach().numpy()
 
-                H_rec, _, _ = np.histogram2d(rec_points[:,axes[0]], rec_points[:,axes[1]], bins=(x_edges,y_edges))
+                H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
                 H_rec -= H_rec.min()
                 H_rec /= 6 * H_rec.std()
                 H_clipped = np.clip(H_rec[..., np.newaxis], 0, 1)
@@ -409,20 +384,19 @@ class VAE(nn.Module):
                 # manage opacity
                 pic[vis, 3] = np.sqrt(np.clip(H_rec[vis], 0, 0.85))
 
-                if (mode == 'rr' or mode == 'random reconstruction'):
-                    # Get the lines
-                    self.always_random_sample = False
-                    self.eval()
-                    _, rec_points, _ = self(torch.tensor(data, dtype=self.data_type))
-                    rec_points = rec_points[0].clone().detach().numpy()
-                    H_rec, _, _ = np.histogram2d(rec_points[:,axes[0]], rec_points[:,axes[1]], bins=(x_edges,y_edges))
-                    H_rec -= H_rec.min()
-                    H_rec /= 6 * H_rec.std()
-                    line = np.clip(H_rec[..., np.newaxis] * 1, 0, 1) * overlay_color
-                    vis = H_rec != 0
-                    pic[vis,:3] = line[vis,:3]
-                    pic[vis, 3] = 0.85
-                    pic = np.clip(pic, 0, 1)
+                # Get the lines
+                self.always_random_sample = False
+                self.eval()
+                _, rec_points, _ = self(torch.tensor(data, dtype=self.data_type))
+                rec_points = rec_points[0].clone().detach().numpy()
+                H_rec, _, _ = np.histogram2d(rec_points[:,0], rec_points[:,1], bins=(x_edges,y_edges))
+                H_rec -= H_rec.min()
+                H_rec /= 6 * H_rec.std()
+                line = np.clip(H_rec[..., np.newaxis] * 1, 0, 1) * overlay_color
+                vis = H_rec != 0
+                pic[vis,:3] = line[vis,:3]
+                pic[vis, 3] = 0.85
+                pic = np.clip(pic, 0, 1)
                 
                 # reset state
                 self.always_random_sample = prev_sample

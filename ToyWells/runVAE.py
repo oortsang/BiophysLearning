@@ -77,14 +77,14 @@ model_param_fname = "data/model_parameters"
 variational = True
 time_lagged = True
 propagator  = True
-denoising   = True
+denoising   = False
 
 if time_lagged:
     sim_data = tla_sim_data
 else:
     sim_data = con_sim_data
 
-n_epochs = 30
+n_epochs = 50
 batch_size = 100
 
 # Network dimensions
@@ -95,33 +95,48 @@ if time_lagged:
 
 h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
+dropout_input  = 0.0
+dropout_hidden = 0.0
+dropout_low    = 0.0
 
+mean_act = nn.ReLU
+var_act  = nn.ReLU
 # the layers themselves
-encode_layers_means = [nn.Linear(in_dim, h_size),
-                       nn.ReLU(),
+encode_layers_means = [nn.Dropout(dropout_input),
+                       nn.Linear(in_dim, h_size),
+                       nn.Dropout(dropout_hidden),
+                       mean_act(),
+
                        nn.Linear(h_size, h_size),
-                       nn.ReLU(),
+                       mean_act(),
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
-encode_layers_vars  = [nn.Linear(in_dim, h_size),
-                       nn.ReLU(),
+encode_layers_vars  = [nn.Dropout(dropout_input),
+                       nn.Linear(in_dim, h_size),
+                       nn.Dropout(dropout_hidden),
+                       var_act(),
+
                        # nn.Linear(h_size, h_size),
                        # nn.ReLU(),
                        nn.Linear(h_size, n_z)
                       ]
 
 decode_layers_means = [nn.Linear(n_z, h_size),
-                       nn.ReLU(),
+                       nn.Dropout(dropout_hidden),
+                       mean_act(),
+
                        nn.Linear(h_size, h_size),
-                       nn.ReLU(),
+                       nn.Dropout(dropout_hidden),
+                       mean_act(),
                        nn.Linear(h_size,in_dim)
                       ]
 
 decode_layers_vars  = [nn.Linear(n_z, h_size),
-                       nn.ReLU(),
+                       nn.Dropout(dropout_hidden),
+                       var_act(),
                        # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
+                       # var_act(),
                        nn.Linear(h_size, in_dim)
                       ]
 
@@ -146,7 +161,7 @@ weight_decay = 1e-6    # weight decay -- how much of a penalty to give to the ma
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 denoise_sig = 0.001
 
-pxz_var_init = -np.log(100) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(600) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -206,8 +221,8 @@ def trainer(model, optimizer, epoch, models, loss_array):
         optimizer.zero_grad()
         # split up the data for the time-lagged autoencoder
         # and doesn't do anything if there's no time lag
-        train_data = all_data[:,:in_dim]
-        goal_data  = all_data[:,-in_dim:]
+        train_data = all_data[:,:in_dim].float()
+        goal_data  = all_data[:,-in_dim:].float()
 
         # Denoise as suggested by http://www.cs.toronto.edu/~larocheh/publications/icml-2008-denoising-autoencoders.pdf (section 2.3 with q_D)
         # Idea is that you add noise and try to reconstruct the original (which itself has noise..)
@@ -244,8 +259,6 @@ def trainer(model, optimizer, epoch, models, loss_array):
     models.append(copy.deepcopy(vae_model.state_dict()))
     loss_array.append(epoch_fail/batch_count) # keep track of loss
 
-square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
-
 def test(model, dataset):
     """Takes a torch dataset/tensor as data and runs it through the model"""
     model.eval()
@@ -267,6 +280,8 @@ def test(model, dataset):
         # rec_loss = square_loss(out_means[1], answers).item()
     return loss, rec_loss
 
+square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
+
 ### Now for the actual running and comparison against other methods ###
 
 if __name__ == "__main__":
@@ -274,29 +289,33 @@ if __name__ == "__main__":
     # However, if you want access to the variables by command line while running the script in interactive
     # mode, you may want to move everything outside the if statement.
 
+    # Easily switch the data sets the comparison is using
+    current_set = train_set # or sim_data
+
     # Compare against a naive guess of averages
-    naive = sim_data[-50000:,:in_dim].mean(0)
+    naive = current_set[:,:in_dim].mean(0)
     # naive_loss = ((naive - sim_data.data[:,-in_dim:])**2).sum(1).mean()
-    naive_loss = square_loss(sim_data.data[:,-in_dim:], naive)
-    print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
+    naive_loss = square_loss(current_set.data[:,:in_dim], naive)
+    print("A naive guess from taking averages of positions yields a loss of", naive_loss)
 
     # Compare against PCA
     pca_start = time.time()
     pca = PCA()
-    pca_latent = pca.fit_transform(sim_data.data[:,:in_dim])
+    pca_latent = pca.fit_transform(current_set.data[:,:in_dim])
     pca_latent[:,n_z:] = 0
     pca_guesses = pca.inverse_transform(pca_latent)
     # pca_loss = ((pca_guesses - sim_data.data[:,-in_dim:])**2).sum(1).mean()
-    pca_loss = square_loss(sim_data.data[:,-in_dim:], pca_guesses)
+    pca_loss = square_loss(current_set.data[:,-in_dim:], pca_guesses)
     print("PCA gets a reconstruction loss of %f in %f seconds" % (pca_loss, time.time()-pca_start))
 
     # Compare against the desired result
-    desired = np.zeros((sim_data.data.shape[0], in_dim))
-    desired[:,0] = sim_data.data[:,0]
-    desired[:,1] = sim_data.data[:,1].mean()
+    desired = np.zeros((current_set.data.shape[0], in_dim))
+    desired[:,0] = current_set.data[:,0]
+    for i in range(desired.shape[1]-1):
+        desired[:,i+1] = current_set.data[:,i+1].mean()
     # des_loss = ((desired - sim_data.data[:,-in_dim:])**2).sum(1).mean()
-    des_loss = square_loss(sim_data.data[:,-in_dim:], desired)
-    print("Considering just the double well axis gives a loss of", des_loss)
+    des_loss = square_loss(current_set.data[:,-in_dim:], desired)
+    print("Remembering just the first axis gives a loss of", des_loss)
 
     # Prepare for visualization
     inputs = sim_data.data[:,:in_dim]
@@ -307,81 +326,91 @@ if __name__ == "__main__":
     grid = torch.tensor(grid, dtype = data_type)
     # can imshow H or run grid through vae_model.just_encode(grid)[0]
 
-# Initialize the model
-vae_model = VAE(in_dim              = in_dim,
-                n_z                 = n_z,
-                encode_layers_means = encode_layers_means,
-                encode_layers_vars  = encode_layers_vars,
-                decode_layers_means = decode_layers_means,
-                decode_layers_vars  = decode_layers_vars,
-                propagator_layers   = propagator_layers,
-                time_lagged         = time_lagged,
-                variational         = variational,
-                pxz_var_init        = pxz_var_init,
-                discount            = discount,
-                data_type           = data_type,
-                pref_dataset        = sim_data.data[:])
+    # Initialize the model
+    vae_model = VAE(in_dim              = in_dim,
+                    n_z                 = n_z,
+                    encode_layers_means = encode_layers_means,
+                    encode_layers_vars  = encode_layers_vars,
+                    decode_layers_means = decode_layers_means,
+                    decode_layers_vars  = decode_layers_vars,
+                    propagator_layers   = propagator_layers,
+                    time_lagged         = time_lagged,
+                    variational         = variational,
+                    pxz_var_init        = pxz_var_init,
+                    discount            = discount,
+                    data_type           = data_type,
+                    pref_dataset        = sim_data.data[:])
 
-# If you want to save/load the model's parameters
-save_model = lambda model: torch.save(model, model_param_fname)
-load_model = lambda: torch.load(model_param_fname)
+    # If you want to save/load the model's parameters
+    save_model = lambda model: torch.save(model, model_param_fname)
+    load_model = lambda: torch.load(model_param_fname)
 
-# set the learning function
-if optim_fn == optim.SGD:
-    optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = momentum)
-else:
-    optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay)
+    # set the learning function
+    if optim_fn == optim.SGD:
+        optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = momentum)
+    else:
+        optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay)
 
-# miscellaneous book-keeping variables
-models = [] # Stores old models in case an older one did better
-loss_array = []
-val_loss_array = []
-weight = 0.8
-wavg_loss_array = []
-start_time = time.time() # Keep track of run time
+    # miscellaneous book-keeping variables
+    models = [] # Stores old models in case an older one did better
+    loss_array = []
+    val_loss_array = []
+    weight = 0.99
+    wavg_loss_array = []
+    start_time = time.time() # Keep track of run time
 
-# Now actually do the training
-for epoch in range(n_epochs):
-    trainer(vae_model, optimizer, epoch, models, loss_array)
-    val_loss, val_rec_loss = test(vae_model, val_set)
-    print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
-    # val_loss_array.append(val_loss)
-    val_loss_array.append(val_rec_loss)
-    wavg_loss = weight       * np.array(val_loss_array[-1]) \
-                + (1-weight) * np.array(loss_array[-1])
-    wavg_loss_array.append(wavg_loss)
-    train_outs = vae_model.run_data(train_set)
-    true_train_mse = square_loss(train_set.data[:,:in_dim], train_outs)
-    print("True Training MSE: %f" % true_train_mse)
-    duration = time.time() - start_time
-    print("%f seconds have elapsed since the training began\n" % duration)
+    # Now actually do the training
+    for epoch in range(n_epochs):
+        trainer(vae_model, optimizer, epoch, models, loss_array)
+        val_loss, val_rec_loss = test(vae_model, val_set)
+        print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
+        # val_loss_array.append(val_loss)
+        val_loss_array.append(val_rec_loss)
 
-    if epoch == 3:
-        vae_model.varnet_weight += 1
+        train_outs = vae_model.run_data(train_set)
+        true_train_mse = square_loss(train_set.data[:,-in_dim:], train_outs)
 
-    cutoff = 3
-    # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
-    if epoch >= 5 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
-        print("Stopping training since the validation error has increased over the past 3 epochs.\n"
-              "Replacing vae_model with the most recent model with lowest total validation loss.")
-        break
+        val_outs = vae_model.run_data(val_set, future = True)
+        true_val_mse = square_loss(val_set.data[:,-in_dim:], val_outs)
 
-# idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.01, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error but biases more recent runs
+        wavg_loss = (1-weight) * np.array(val_loss_array[-1]) \
+                    + weight   * np.array(true_val_mse)
 
-idx = len(wavg_loss_array) - 1 \
-      - np.argmin(wavg_loss_array[::-1])
-_ = vae_model.load_state_dict(models[idx])
-print("Selecting the model from epoch", idx)
+        # wavg_loss = weight       * np.array(val_loss_array[-1]) \
+        #             + (1-weight) * np.array(loss_array[-1])
+        wavg_loss_array.append(wavg_loss)
 
-vae_model.plot_test(test_set)
+        print("True Training MSE: %f" % true_train_mse)
+        print("True Valid'n  MSE: %f" % true_val_mse)
+        duration = time.time() - start_time
+        print("%f seconds have elapsed since the training began\n" % duration)
 
-vae_model.latent_plot2d(mode = 'r')
-vae_model.latent_plot2d(mode = 'd')
-vae_model.plot_test()
+        if epoch == 3:
+            vae_model.varnet_weight += 1
 
-if False:
-    for i in range(len(models)):
-        print(i)
-        _ = vae_model.load_state_dict(models[i])
-        vae_model.latent_plot2d('rr')
+        cutoff = 5
+        # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
+        if epoch >= 10 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
+            print("Stopping training since the validation error has increased over the past %d epochs.\n"
+                  "Replacing vae_model with the most recent model with lowest total validation loss." % cutoff)
+            break
+
+    # idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.01, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error but biases more recent runs
+
+    idx = len(wavg_loss_array) - 1 \
+          - np.argmin(wavg_loss_array[::-1])
     _ = vae_model.load_state_dict(models[idx])
+    print("Selecting the model from epoch", idx)
+
+    vae_model.plot_test(test_set)
+
+    vae_model.latent_plot(mode = 'rr')
+    vae_model.latent_plot(mode = 'd', axes = 0)
+    vae_model.plot_test()
+
+    if False:
+        for i in range(len(models)):
+            print(i)
+            _ = vae_model.load_state_dict(models[i])
+            vae_model.latent_plot2d('rr')
+        _ = vae_model.load_state_dict(models[idx])

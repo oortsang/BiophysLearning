@@ -175,7 +175,7 @@ plt.plot(xs, PWell(xs))
 plt.show()
 
 
-p1 = Particle(PWell, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(NWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 # # Spit out the coordinates (and control the different trajectories...)

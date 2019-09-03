@@ -295,8 +295,6 @@ def trainer(model, optimizer, epoch, models, loss_array, kl_lambda = 1):
     models.append(copy.deepcopy(vae_model.state_dict()))
     loss_array.append(epoch_fail/batch_count) # keep track of loss
 
-square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
-
 def test(model, dataset):
     """Takes a torch dataset/tensor as data and runs it through the model"""
     model.eval()
@@ -318,12 +316,15 @@ def test(model, dataset):
         # rec_loss = square_loss(out_means[1], answers).item()
     return loss, rec_loss
 
-def plot_prop():
-    xs = np.arange(-3,3, 0.01)
+def plot_prop(range = (-3,3)):
+    """Plot the output of the propagator to see """
+    xs = np.arange(*range, 0.01)
     ys = vae_model.propagator_net(torch.tensor(xs, dtype=torch.float)[:, np.newaxis]).detach().numpy()
     plt.plot(xs, ys)
     plt.plot(xs, xs)
     plt.show()
+
+square_loss = lambda y, fx: ((y-fx)**2).sum(1).mean()
 
 ### Now for the actual running and comparison against other methods ###
 
@@ -336,10 +337,10 @@ if __name__ == "__main__":
     current_set = train_set # or sim_data
 
     # Compare against a naive guess of averages
-    naive = current_set[-50000:,:in_dim].mean(0)
+    naive = current_set[:,:in_dim].mean(0)
     # naive_loss = ((naive - sim_data.data[:,-in_dim:])**2).sum(1).mean()
     naive_loss = square_loss(current_set.data[:,:in_dim], naive)
-    print("A naive guess from taking averages of the last 50000 positions yields a loss of", naive_loss)
+    print("A naive guess from taking averages of positions yields a loss of", naive_loss)
 
     # Compare against PCA
     pca_start = time.time()
@@ -395,17 +396,17 @@ if __name__ == "__main__":
                     discount            = discount,
                     data_type           = data_type,
                     pref_dataset        = sim_data.data[:])
-    
+
     # If you want to save/load the model's parameters
     save_model = lambda model: torch.save(model, model_param_fname)
     load_model = lambda: torch.load(model_param_fname)
-    
+
     # set the learning function
     if optim_fn == optim.SGD:
         optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay, momentum = momentum)
     else:
         optimizer = optim_fn(vae_model.parameters(), lr = lr, weight_decay = weight_decay)
-    
+
     # miscellaneous book-keeping variables
     models = [] # Stores old models in case an older one did better
     loss_array = []
@@ -426,47 +427,47 @@ if __name__ == "__main__":
         val_loss_array.append(val_rec_loss)
         train_outs = vae_model.run_data(train_set)
         true_train_mse = square_loss(train_set.data[:,-in_dim:], train_outs)
-    
+
         val_outs = vae_model.run_data(val_set, future = True)
         true_val_mse = square_loss(val_set.data[:,-in_dim:], val_outs)
-    
+
         wavg_loss = (1-weight) * np.array(val_loss_array[-1]) \
                     + weight   * np.array(true_val_mse)
-    
+
         # wavg_loss = weight       * np.array(val_loss_array[-1]) \
         #             + (1-weight) * np.array(loss_array[-1])
         wavg_loss_array.append(wavg_loss)
-    
+
         print("True Training MSE: %f" % true_train_mse)
         print("True Valid'n  MSE: %f" % true_val_mse)
         duration = time.time() - start_time
         print("%f seconds have elapsed since the training began\n" % duration)
-    
+
         if epoch == 3:
             vae_model.varnet_weight += 1
-    
+
         cutoff = 5
         # if epoch >= 1+cutoff and val_rec_loss > max(val_loss_array[-cutoff-1:-2]):
         if epoch >= 10 and wavg_loss > max(wavg_loss_array[-cutoff-1:-2]):
-            print("Stopping training since the validation error has increased over the past 3 epochs.\n"
-                  "Replacing vae_model with the most recent model with lowest total validation loss.")
+            print("Stopping training since the validation error has increased over the past %d epochs.\n"
+                  "Replacing vae_model with the most recent model with lowest total validation loss." % cutoff)
             break
-    
+
     # idx = len(val_loss_array) - 1 - np.argmin((val_loss_array+np.linspace(0, -0.01, len(val_loss_array)))[::-1]) # gives the most recent model with lowest validation error but biases more recent runs
-    
+
     idx = len(wavg_loss_array) - 1 \
           - np.argmin(wavg_loss_array[::-1])
     _ = vae_model.load_state_dict(models[idx])
     print("Selecting the model from epoch", idx)
-    
+
     # vae_model.plot_test(test_set)
-    
+
     vae_model.latent_plot(mode = 'rr')
     vae_model.latent_plot(mode = 'd', axes = (0,))
     vae_model.plot_test(axes = (6,1), dims = (0,1,2,3,99))
     # vae_model.plot_test()
     plot_prop()
-    
+
     if False:
         for i in range(len(models)):
             print(i)
