@@ -105,25 +105,21 @@ class PiecewisePolynomial():
     def eval(self, x):
         """Returns the value of the function at the given point. The function is decided by the value of the c function (which could be a piecewise polynomial itself)"""
         xx = np.array(x)
-        # if xx.ndim >= 1 and xx.shape[0] > self.p1.dim:
-        # if xx.ndim > 1 or (xx.ndim == 1 and xx.shape[0] > self.p1.dim):
-        # pdb.set_trace()
-        if xx.ndim > 1 or (xx.ndim == 1 and self.p1.dim == 1):
-            # val_shape = xx.shape[:-1] if self.p1.return_dim == 1  else (*xx.shape[:-1], return_dim)
-            val_shape = (*xx.shape[:-1], self.p1.return_dim)
-            if xx.ndim == 1 or self.p1.return_dim == 1:
-                val_shape = (x.shape[0], )
+        if xx.ndim > 1 or (xx.ndim == 1 and self.p1.dim == 1): # If the inputs xx come as a list,
+            val_shape = (*xx.shape[:-1], self.p1.return_dim)   #  prepare the shape of the output
+            if xx.ndim == 1 or self.p1.return_dim == 1:        # If our input is low-dimensional,
+                val_shape = (x.shape[0], )                     #  shape the outputs appropriately
             val = np.zeros(val_shape, dtype = np.double)
-            p1_idcs = self.c(x) >= 0
+            p1_idcs = self.c(x) >= 0                           # Decide which points get which fn
             p2_idcs = np.logical_not(p1_idcs)
-            if xx.ndim == 1 or self.p1.return_dim == 1:
+            if x.ndim == 1 or self.return_dim == 1: # massage
                 p1_idcs = p1_idcs.flatten()
                 p2_idcs = p2_idcs.flatten()
 
             if np.any(p1_idcs):
-                val[p1_idcs] = self.p1(xx[p1_idcs])
+                val[p1_idcs] = self.p1(x[p1_idcs])
             if np.any(p2_idcs):
-                val[p2_idcs] = self.p2(xx[p2_idcs])
+                val[p2_idcs] = self.p2(x[p2_idcs])
         else:
             val = (self.p1 if self.c(xx) >= 0 else self.p2) (xx)
         return val
@@ -146,36 +142,109 @@ class PiecewisePolynomial():
     def __repr__(self):
         return "Piecewise Polynomial"
 
-class OneHotVector():
-    def __init__(self, size):
-        """Takes a shape for the one-hot vector - doesn't need to be 1d"""
-        self.v = np.zeros(size, dtype=np.bool)
-    def update(self, i):
-        """If we're not storing a single 1D vector then i should be a tensor"""
-        self.v = 0
-        self.v[i] = 1
+# class OneHotVectorList():
+#     """Store a list of one-hot vectors. Can have a single entry."""
+#     def __init__(self, dims, length):
+#         """Takes a shape for the one-hot vector - doesn't need to be 1d"""
+#         self.v = np.zeros((length, dims), dtype=np.bool)
+#         self.length = length
+#         self.dims = dims
 
-def easyPiecewise(fs, cs):
-    """Returns a piecewise polynomial given a different parameterization from PiecewisePolynomial
-    Input: 
-          fs - array with m polynomials [f0, f1, ... f(m-1)]
-          cs - a (vectorized) function that takes the input point
-               and returns and integer in [0, m-1]
-    """
-    # Maybe should make this into a class inheriting from PiecewisePolynomial to control the evaluation of the condition...
-    m = len(fs)
-    def cshot(xs):
-        # uhh this probably won't work because of vector shape reasons...
-        ms = cs(xs) # N dim or 0 dim
-        ohvec = np.zeros((*ms.shape, ms))
-        ohvec[ms] = 1 # one-hot vector
-        return ohvec
-    # Try to do some kind of binary search...
+#     def update(self, idcs):
+#         """If we're not storing a single 1D vector then i should be a tensor"""
+#         self.v *= False
+#         self.v[np.arange(self.length), idcs] = True
 
-    # NEW PLAN:
-    #   create a class that inherits from Piecewise Polynomial
-    #   Something like eval/grad: (update one-hot vector) then self.super().eval/grad()
-    #   So that each of the polynomials/piecewise polynomials have conditions that depend on the one-hot vector
+class EasyPiecewise():
+    """Acts as a Piecewise Polynomial but uses a different parameterization."""
+    def __init__(self, ps, cs):
+        """Input:
+                 ps - array with m polynomials [p0, p1, ...,  p(m-1)]
+                 cs - a (vectorized) function that takes the input point
+                      and returns and integer in [0, m-1]
+        """
+        if (len(ps) <=1):
+            print("Expected a list of polynomials for ps, but the dimensions aren't right...")
+            return
+        self.ps = ps
+        self.cs = cs
+        self.m = len(ps)
+        self.dim = ps[0].dim
+        self.return_dim = ps[0].return_dim
+
+    def eval(self, x):
+        """Returns the value of the function at the given point. The function is decided by the value of the c function (which could be a piecewise polynomial itself)"""
+        xx = np.array(x) # so that we can check the ndim even if the variable isn't a numpy array
+        if xx.ndim > 1 or (xx.ndim == 1 and self.dim == 1): # If the inputs xx come as a list,
+            val_shape = (*xx.shape[:-1], self.return_dim)   #  prepare the shape of the output
+            if x.ndim == 1 or self.return_dim == 1:         # If our input is low-dimensional,
+                val_shape = (x.shape[0], )                     #  shape the outputs appropriately
+            val = np.zeros(val_shape, dtype = np.double)
+
+            conds = self.cs(x)
+            for pi in range(len(self.ps)):
+                pi_idcs = (conds == pi)
+                if x.ndim == 1 or self.return_dim == 1: # massage
+                    pi_idcs = pi_idcs.flatten()
+                if np.any(pi_idcs):
+                    val[pi_idcs] = self.ps[pi](x[pi_idcs])
+        else:
+            idx = self.cs(xx)
+            val = (self.ps[idx]) (xx)
+        return val
+
+    def grad(self):
+        """Return the gradient"""
+        gs = [p.grad() for p in self.ps]
+        return self.__class__(gs, self.cs)
+
+    def __call__(self, x):
+        return self.eval(x)
+
+    def __mul__(self, a):
+        return self.__class__([a*p for p in self.ps], self.c)
+
+    def __rmul__(self, a):
+        return self.__class__([a*p for p in self.ps], self.c)
+
+
+        # Now make a piecewise polynomial object
+        # need to build it up recursively...
+
+    # def compute_conditions(self, xs):
+    #     """Updates the local one-hot vector"""
+    #     self.ohvec = OneHotVectorList(self.m, xs.shape[0])
+    #     ms = self.cs(xs) # options that are selected
+    #     self.ohvec.update(ms)
+        
+        
+    # def eval(self, xs):
+    #     """Takes an input, computes the conditions (saving the results in a OneHotVectorList), and calls the saved PiecewisePolynomial object"""
+    #     pass
+
+# def easyPiecewise(fs, cs):
+#     """Returns a piecewise polynomial given a different parameterization from PiecewisePolynomial
+#     Input: 
+#           fs - array with m polynomials [f0, f1, ... f(m-1)]
+#           cs - a (vectorized) function that takes the input point
+#                and returns and integer in [0, m-1]
+#     """
+#     # Maybe should make this into a class inheriting from PiecewisePolynomial to control the evaluation of the condition...
+#     m = len(fs)
+#     N = 1 # number of examples...
+#     ohvec = OneHotVectorList(m, N)
+#     ms = cs(xs) # N dim or 0 dim
+#     ohvec.update(ms)
+
+#     def cshot(xs):
+#         # Pass this function on to the others
+        
+#     # Try to do some kind of binary search...
+
+#     # NEW PLAN:
+#     #   create a class that inherits from Piecewise Polynomial
+#     #   Something like eval/grad: (update one-hot vector) then self.super().eval/grad()
+#     #   So that each of the polynomials/piecewise polynomials have conditions that depend on the one-hot vector
 
 # p1 = MultiPolynomial([1, -4, 4])
 # p2 = MultiPolynomial([1,  4, 4])
