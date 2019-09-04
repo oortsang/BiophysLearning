@@ -96,7 +96,7 @@ if time_lagged:
 h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
 dropout_input  = 0.0
-dropout_hidden = 0.0
+dropout_hidden = 0.1
 dropout_low    = 0.0
 
 mean_act = nn.ReLU

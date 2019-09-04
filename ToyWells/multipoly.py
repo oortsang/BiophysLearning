@@ -146,6 +146,37 @@ class PiecewisePolynomial():
     def __repr__(self):
         return "Piecewise Polynomial"
 
+class OneHotVector():
+    def __init__(self, size):
+        """Takes a shape for the one-hot vector - doesn't need to be 1d"""
+        self.v = np.zeros(size, dtype=np.bool)
+    def update(self, i):
+        """If we're not storing a single 1D vector then i should be a tensor"""
+        self.v = 0
+        self.v[i] = 1
+
+def easyPiecewise(fs, cs):
+    """Returns a piecewise polynomial given a different parameterization from PiecewisePolynomial
+    Input: 
+          fs - array with m polynomials [f0, f1, ... f(m-1)]
+          cs - a (vectorized) function that takes the input point
+               and returns and integer in [0, m-1]
+    """
+    # Maybe should make this into a class inheriting from PiecewisePolynomial to control the evaluation of the condition...
+    m = len(fs)
+    def cshot(xs):
+        # uhh this probably won't work because of vector shape reasons...
+        ms = cs(xs) # N dim or 0 dim
+        ohvec = np.zeros((*ms.shape, ms))
+        ohvec[ms] = 1 # one-hot vector
+        return ohvec
+    # Try to do some kind of binary search...
+
+    # NEW PLAN:
+    #   create a class that inherits from Piecewise Polynomial
+    #   Something like eval/grad: (update one-hot vector) then self.super().eval/grad()
+    #   So that each of the polynomials/piecewise polynomials have conditions that depend on the one-hot vector
+
 # p1 = MultiPolynomial([1, -4, 4])
 # p2 = MultiPolynomial([1,  4, 4])
 # c  = MultiPolynomial([1,0])

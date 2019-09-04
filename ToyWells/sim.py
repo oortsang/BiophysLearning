@@ -129,11 +129,12 @@ RWell = 0.001*MultiPolynomial(RipCoeffs)
 #     outs = np.clip(outs, 0,5)
 #     plt.imshow(outs,cmap='jet')
 #     plt.show()
+
+# Piecewise potential landscape with 3 wells in 2D...
 height = 8e-26
 lwell = height * MultiPolynomial([1.5, 16, 32])
 mwell = height * MultiPolynomial([1, 0,  -11.5])
 rwell = height * MultiPolynomial([1.5,-16, 32])
-# c  = MultiPolynomial([1,0])
 c1 = MultiPolynomial([-1,3])
 c2 = MultiPolynomial([-1,-3])
 PLWell = PiecewisePolynomial(mwell,  rwell, c1)
@@ -142,7 +143,7 @@ PWell  = PiecewisePolynomial(lwell, PLWell, c2)
 # Piecewise potential landscape with three wells in 2D
 scale = 2e-26
 w1 = scale * MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
-w2 = scale * MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]]) 
+w2 = scale * MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]])
 # w3 = scale * MultiPolynomial([[0, 0, 0.5], [0, 0, 0], [0.5, -4, -48]])
 w3 = scale * 0.75 * MultiPolynomial([[0, 0, 0.75], [0, 0, 0], [0.75, -6, -72]])
 c1  = MultiPolynomial([[0,1],[0,0]])
@@ -153,6 +154,25 @@ c2 = PiecewisePolynomial(c21, c22, c2c)
 p1  = PiecewisePolynomial(w1, w2, c1)
 p_trip  = PiecewisePolynomial(w3, p1, c2)
 
+# Hexagonally distributed potential wells...
+# Regular hexagon with side length 1
+# centers at: (1,0), (cos(pi/3), sin(pi/3)), (cos(2*pi/3), sin(2*pi/3)), ...
+n_points = 6
+cr = 1 #circumradius
+centers = cr*np.array([(np.cos(2*np.pi*k/n_points), np.sin(2*np.pi*k/n_points)) for k in range(n_points)])
+barriers = []
+for k in range(n_points):
+    # (c,s) . (x, y) = 0 are the dividing lines
+    # (-sd, cd) . (x, y) is the projection onto the normal of the dividing line
+    angle = (2*np.pi * (k+1/2)  / n_points) % (2*np.pi)
+    s = np.sin(angle)
+    c = np.cos(angle)
+    d = np.sign(c) # direction
+    tmp_barr = MultiPolynomial([[0,-s*d],[c*d,0]]) # [[xy, x], [y, 1]]
+    barriers.append(tmp_barr)
+
+    
+# Defining regular potential wells based on coefficients
 
 a = np.array(1e-25, dtype=np.double)
 HWell = a * MultiPolynomial([              1, 0, 0]) # harmonic
@@ -168,13 +188,14 @@ RWell = 9e-28 * MultiPolynomial(RipCoeffs)
 # --> x^6 - 41 x^4 + 400 x^2
 TWell = 4e-28 * MultiPolynomial([1, 0, -50, 0, 625, 0, 0]) # triple
 
+# plot a couple of the wells
 xs = np.arange(-10, 10, 0.01)
 plt.plot(xs, NWell(xs))
 # plt.plot(xs, TWell(xs))
 plt.plot(xs, PWell(xs))
 plt.show()
 
-
+# Set up the particles
 p1 = Particle(NWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
