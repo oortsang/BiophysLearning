@@ -64,29 +64,63 @@ p1     = PiecewisePolynomial(w1, w2, c1)
 p_trip = PiecewisePolynomial(w3, p1, c2)
 
 # Generate regular-polygonally-distributed potential wells
-def polyg_well_gen(n_points = 6, cr = 1):
+def polyg_well_gen(n_points = 6, cr = 1, well_str = 1):
     """Generates regular-polygonally-distributed potential wells
     Input: n_points (int) - number of points to put on the circumference of a circle
            cr (float) - circumradius of the polygon / radius of the circle where the points lie
     """
     centers = cr*np.array([(np.cos(2*np.pi*k/n_points), np.sin(2*np.pi*k/n_points)) for k in range(n_points)])
     barriers = []
+    wells = []
     for k in range(n_points):
         # (c,s) . (x, y) = 0 are the dividing lines
         # (-sd, cd) . (x, y) is the projection onto the normal of the dividing line
         angle = (2*np.pi * (k+1/2)  / n_points) % (2*np.pi)
         s = np.sin(angle)
         c = np.cos(angle)
-        d = np.sign(c) # direction
-        tmp_barr = [[0,-s*d],[c*d,0]] # [[xy, x], [y, 1]]
+        tmp_barr = [[0,-s],[c,0]] # [[xy, x], [y, 1]]
         barriers.append(tmp_barr)
+        # Find the polynomial's coefficients now
+        # z = well_str*(x^2 - 2*x*x0 + x0^2 + y^2 - 2*y*y0 + y0^2)
+        x0, y0 = centers[k]
+        coeff = np.array([[0,       0,             1], # x^2
+                          [0,       0,       -2 * x0], # x
+                          [1, -2 * y0, x0**2 + y0**2]] # 1
+                )
+        wells.append(MultiPolynomial(well_str * coeff))
     selector = MultiPolynomial(barriers, return_vector = True)
-    return selector
+
+    def picker(x):
+        # selects the correct potential well -- gets stored in the EasyPiecewise object
+        out = ((selector(x)) >= 0).astype(np.int)
+        outp = np.concatenate((out, out[...,0][...,np.newaxis]), axis = -1)
+        outp = np.diff(outp, axis = -1)
+        idcs = np.where(outp == -1) # going from +1 to 0 is a sign that the point is between two
+        if len(idcs) > 1:
+            idcs = np.array(idcs)
+            rows = idcs[:-1]
+            js = idcs[-1]
+            wasnt_found = np.ones(out.shape[0], np.bool) # Keep track of missing entries
+            wasnt_found[rows] = False
+            print("Missing rows ", np.where(wasnt_found))
+
+            choices = np.zeros(out.shape[0], np.int)
+            choices[rows]  = js
+        elif len(idcs) == 1:
+            choices = idcs[0].item()
+        else:
+            choices = 0 # default...
+        return choices
+
+    return EasyPiecewise(wells, picker)
+    # return picker
+
+hexawell = polyg_well_gen()
+pt = np.array((1,1))
+pts = np.array(((0,1), (1,0), (1,1), (0,0)))
 
 
-
-
-########## Commented-out potential wells that could be useful ################
+########## Potential wells that could be potentially useful ##################
 
 # TriCoeffs = np.array([ [0, 0, 0, 0, 0, 0,   1],   # x^6
 #                        [0, 0, 0, 0, 0, 0, 0.2],     # x^5

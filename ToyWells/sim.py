@@ -102,26 +102,6 @@ from potwells import NWell
 # Harmonic well
 from potwells import HWell
 
-# Hexagonally distributed potential wells...
-def polyg_well_gen(n_points = 6, cr = 1):
-    """Input: n_points - number of points to put on the circumference of a circle
-    cr - circumradius of the polygon / radius of the circle where the points lie
-    """
-    centers = cr*np.array([(np.cos(2*np.pi*k/n_points), np.sin(2*np.pi*k/n_points)) for k in range(n_points)])
-    barriers = []
-    for k in range(n_points):
-        # (c,s) . (x, y) = 0 are the dividing lines
-        # (-sd, cd) . (x, y) is the projection onto the normal of the dividing line
-        angle = (2*np.pi * (k+1/2)  / n_points) % (2*np.pi)
-        s = np.sin(angle)
-        c = np.cos(angle)
-        d = np.sign(c) # direction
-        tmp_barr = MultiPolynomial([[0,-s*d],[c*d,0]]) # [[xy, x], [y, 1]]
-        barriers.append(tmp_barr)
-
-
-
-
 
 # plot a couple of the wells
 xs = np.arange(-10, 10, 0.01)
