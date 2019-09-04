@@ -35,20 +35,27 @@ class MultiPolynomial():
             coeffs = self.coeffs[np.newaxis,:]
         # iterate through different coefficient stuff -- for vector-valued functions
         # newaxis above is for scalar functions to maintain behavior without the for loop
-        for c in coeffs:
-            for i, xi in enumerate(x): # for each example
-                ind_x_pows = np.vander(xi, self.degree)
-                x_pows = ind_x_pows[0]
-                for i in range(1, xi.shape[0]):
-                    x_pows = x_pows[...,np.newaxis] * ind_x_pows[i]
+        # for c in coeffs:
+        #     for i, xi in enumerate(x): # for each example
+        for i, xi in enumerate(x): # for each example
+            ind_x_pows = np.vander(xi, self.degree)
+            x_pows = ind_x_pows[0]
+            for i in range(1, xi.shape[0]):
+                x_pows = x_pows[...,np.newaxis] * ind_x_pows[i]
+
+            for c in coeffs:
                 tmp = c * x_pows
                 res.append(tmp)
         res = np.array(res)
         if res.ndim < 4:
             res = res[np.newaxis,:]
         res = res.squeeze()
+        # leave_dims = np.max((self.return_vector, self.coeffs.ndim - input_dim + (orig_dim-1)))
         leave_dims = np.max((0, self.coeffs.ndim - input_dim + (orig_dim-1)))
         summed = res.sum(axis=tuple(range(res.ndim-1, leave_dims-1, -1)))
+        # import pdb; pdb.set_trace()
+        if self.return_vector:
+            summed = summed.reshape((summed.shape[0]//input_dim, input_dim))
         # add a correction to distinguish Vector-Valued 2D from scalar 3D...
         return np.squeeze(summed)
 
