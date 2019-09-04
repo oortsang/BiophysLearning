@@ -28,7 +28,7 @@ class MultiPolynomial():
         orig_dim  = x.ndim
         x = np.atleast_2d(x)
         input_dim = x.shape[-1]
-        
+
         res = []
         coeffs = self.coeffs
         if not self.return_vector:
@@ -70,7 +70,7 @@ class MultiPolynomial():
         if vdim == 1:
             new_coeffs = new_coeffs[0]
         return MultiPolynomial(new_coeffs, return_vector = vdim > 1)
-    
+
     def __call__(self, x):
         # convenient syntax like f(3, 4)
         return self.eval(x)
@@ -142,19 +142,6 @@ class PiecewisePolynomial():
     def __repr__(self):
         return "Piecewise Polynomial"
 
-# class OneHotVectorList():
-#     """Store a list of one-hot vectors. Can have a single entry."""
-#     def __init__(self, dims, length):
-#         """Takes a shape for the one-hot vector - doesn't need to be 1d"""
-#         self.v = np.zeros((length, dims), dtype=np.bool)
-#         self.length = length
-#         self.dims = dims
-
-#     def update(self, idcs):
-#         """If we're not storing a single 1D vector then i should be a tensor"""
-#         self.v *= False
-#         self.v[np.arange(self.length), idcs] = True
-
 class EasyPiecewise():
     """Acts as a Piecewise Polynomial but uses a different parameterization."""
     def __init__(self, ps, cs):
@@ -174,11 +161,11 @@ class EasyPiecewise():
 
     def eval(self, x):
         """Returns the value of the function at the given point. The function is decided by the value of the c function (which could be a piecewise polynomial itself)"""
-        xx = np.array(x) # so that we can check the ndim even if the variable isn't a numpy array
+        xx = np.array(x) # so that we can check the ndim even if the input isn't a numpy array
         if xx.ndim > 1 or (xx.ndim == 1 and self.dim == 1): # If the inputs xx come as a list,
             val_shape = (*xx.shape[:-1], self.return_dim)   #  prepare the shape of the output
             if x.ndim == 1 or self.return_dim == 1:         # If our input is low-dimensional,
-                val_shape = (x.shape[0], )                     #  shape the outputs appropriately
+                val_shape = (x.shape[0], )                  #  shape the outputs appropriately
             val = np.zeros(val_shape, dtype = np.double)
 
             conds = self.cs(x)
@@ -208,43 +195,7 @@ class EasyPiecewise():
         return self.__class__([a*p for p in self.ps], self.c)
 
 
-        # Now make a piecewise polynomial object
-        # need to build it up recursively...
 
-    # def compute_conditions(self, xs):
-    #     """Updates the local one-hot vector"""
-    #     self.ohvec = OneHotVectorList(self.m, xs.shape[0])
-    #     ms = self.cs(xs) # options that are selected
-    #     self.ohvec.update(ms)
-        
-        
-    # def eval(self, xs):
-    #     """Takes an input, computes the conditions (saving the results in a OneHotVectorList), and calls the saved PiecewisePolynomial object"""
-    #     pass
-
-# def easyPiecewise(fs, cs):
-#     """Returns a piecewise polynomial given a different parameterization from PiecewisePolynomial
-#     Input: 
-#           fs - array with m polynomials [f0, f1, ... f(m-1)]
-#           cs - a (vectorized) function that takes the input point
-#                and returns and integer in [0, m-1]
-#     """
-#     # Maybe should make this into a class inheriting from PiecewisePolynomial to control the evaluation of the condition...
-#     m = len(fs)
-#     N = 1 # number of examples...
-#     ohvec = OneHotVectorList(m, N)
-#     ms = cs(xs) # N dim or 0 dim
-#     ohvec.update(ms)
-
-#     def cshot(xs):
-#         # Pass this function on to the others
-        
-#     # Try to do some kind of binary search...
-
-#     # NEW PLAN:
-#     #   create a class that inherits from Piecewise Polynomial
-#     #   Something like eval/grad: (update one-hot vector) then self.super().eval/grad()
-#     #   So that each of the polynomials/piecewise polynomials have conditions that depend on the one-hot vector
 
 # p1 = MultiPolynomial([1, -4, 4])
 # p2 = MultiPolynomial([1,  4, 4])
@@ -256,7 +207,7 @@ class EasyPiecewise():
 # plt.show()
 
 # w1 = MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
-# w2 = MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]]) 
+# w2 = MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]])
 # w3 = MultiPolynomial([[0, 0, 0.75], [0, 0, 0], [0.75, -6, -72]])
 # c1  = MultiPolynomial([[0,1],[0,0]])
 
