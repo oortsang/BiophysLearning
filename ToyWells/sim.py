@@ -1,3 +1,5 @@
+# Oliver Tsang, Summer 2019
+# This file runs a Brownian Dynamics simulation on provided potential wells, some of which are stored in potwells.py.
 import numpy as np
 import pdb
 import matplotlib.pyplot as plt
@@ -5,11 +7,9 @@ from tqdm import tqdm
 import h5py
 import pdb
 
-from multipoly import MultiPolynomial
-from multipoly import PiecewisePolynomial
+from multipoly import MultiPolynomial, PiecewisePolynomial, EasyPiecewise
 
-# Brownian motion / taking random steps
-
+# Constants
 # kB = 1.380649e-23 # units of J/K
 # m / s * (a / m) * (s / ps)
 #         (1e-10)    (1e12)
@@ -18,6 +18,7 @@ kB = 1.380649e-27 # units of kg ã² / ps²
 tstep = 1 # ps
 
 class Particle():
+    """Stores the coordinate information as well as physical properties of a particle. Can be an arbitrary number of dimensions."""
     def __init__(self, Pot, pos = 0, D = 0.1, T = 300, nsize = 1, dt = tstep):
         """Initializes the simulation
 
@@ -34,26 +35,25 @@ class Particle():
         self.F     = -1*Pot.grad()    # force function
         self.tstep = tstep            # time step
         self.nsize = nsize            # noise size
-        self.nsig  = np.sqrt(2*D*dt)  # noise standard deviation
-
+        self.nsig  = np.sqrt(2*D*dt)  # noise standard deviation from fluctuation-dissipation thm
         self.dim   = self.Pot.dim     # dimensionality
-        self.pos   = np.array(pos, dtype=np.double) # ND position
+        self.pos   = np.array(pos, dtype=np.double) # n-dim position
         if self.pos.ndim == 0:
             self.pos = self.pos[np.newaxis]
 
-        # initializing the start position to be robust in
-        # the case of a too-low-dimensional self.pos
+        # initializing the start position to be robust in case self.pos is too few dimensions
         if (self.pos.shape[0] < self.dim):
             newpos = np.zeros(self.dim, dtype=np.double)
             newpos[:self.pos.shape[0]] = self.pos
             self.pos = newpos
-        # self.tot_noise = 0
 
     def vel(self, pos):
+        """Find the velocity of a particle given the force field"""
         force = self.F(pos)
         return self.DkT * force
 
     def noise(self):
+        """Returns the amount of perturbation caused by noise"""
         return self.nsize * np.random.normal(0, self.nsig,  self.dim)
 
     def step(self):
@@ -71,135 +71,70 @@ class Particle():
 
         self.pos += step_size
 
-# TriCoeffs = np.array([ [0, 0, 0, 0, 0, 0,   1],   # x^6
-#                        [0, 0, 0, 0, 0, 0, 0.2],     # x^5
-#                        [0,0,0,0,3, 0.02, -0.46],      # x^4
-#                        [0,0,0,0,0.4, 0.12, -1.762],     # x^3
-#                        [0,0,3,0.4,0.04, -0.726, -0.1395], # x^2
-#                        [0,0,0.2,0.12,5.118, 0.292, 0.405],  # x^1
-#                        [1, 0.2, .5, .314, .2565, .114, .7565] # x^0
-#                      ])
+def plot2d(potwell):
+    """Plots a 2D potential well"""
+    xs = np.arange(-5, 5, 0.05)
+    Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))])\
+             .reshape((xs.shape[0], xs.shape[0], 2)) # make a grid
+    xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
+    outs = np.zeros(xxs.shape[0])
+    for i in range(xxs.shape[0]):
+        outs[i] = potwell(xxs[i])
+    outs = outs.reshape(Xs2d.shape[:2])
+    outs = np.clip(outs, 0,5)
+    plt.imshow(outs,cmap='jet')
+    plt.show()
 
-# input values scaled down  by a factor of 2
-# ((x-2)^2+(y)^2)*((x+1)^2+(y+1.73)^2)*((x+2)^2+(y-1.73)^2)
-# TriCoeffs = np.array([[ 0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.004],
-#                       [ 0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.   ,  0.002],
-#                       [ 0.   ,  0.   ,  0.   ,  0.   ,  0.012,  0.   , -0.007],
-#                       [ 0.   ,  0.   ,  0.   ,  0.   ,  0.003,  0.002, -0.055],
-#                       [ 0.   ,  0.   ,  0.012,  0.003,  0.001, -0.023, -0.009],
-#                       [ 0.   ,  0.   ,  0.002,  0.002,  0.16 ,  0.018,  0.051],
-#                       [ 0.004,  0.002,  0.008,  0.01 ,  0.016,  0.014,  0.189]])
 
 # ((x-4)^2+(y)^2)*((x)^2+(y-3)^2)*((x+4)^2+(y)^2)
-RipCoeffs = np.array([[    0,     0,     0,     0,     0,     0,     1],
-                      [    0,     0,     0,     0,     0,     0,     0],
-                      [    0,     0,     0,     0,     3,    -6,   -23],
-                      [    0,     0,     0,     0,     0,     0,     0],
-                      [    0,     0,     3,   -12,    18,   192,   -32],
-                      [    0,     0,     0,     0,     0,     0,     0],
-                      [    1,    -6,    41,  -192,   544, -1536,  2304]])
-
-# -2*(x^2+y^2) + 1/8*(x^2+y^2)^2−1/4(x^3−3x*y^2)
-T3Coeffs = np.array([[ 0.   ,  0.   ,  0.   ,  0.   ,  0.125],
-                     [ 0.   ,  0.   ,  0.   ,  0.   , -0.25 ],
-                     [ 0.   ,  0.   ,  0.25 ,  0.   , -2.   ],
-                     [ 0.   ,  0.   ,  0.75 ,  0.   ,  0.   ],
-                     [ 0.125,  0.   , -2.   ,  0.   ,  0.   ]])
-
-
-
-# QCoeffs = np.zeros((5,5))
-# QCoeffs[4,4] = -1
-# QCoeffs[4,2] = 1
-# QCoeffs[2,4] = 1
-# QCoeffs[2,2] = -1
-
-# QWell = MultiPolynomial(QCoeffs)
-# CromWell next
+from potwells import RipCoeffs
 RWell = 0.001*MultiPolynomial(RipCoeffs)
 
-# if RWell is not None:
-#     xs = np.arange(-5, 5, 0.05)
-#     Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))]).reshape((xs.shape[0], xs.shape[0], 2))
-#     xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
-#     outs = np.zeros(xxs.shape[0])
-#     for i in range(xxs.shape[0]):
-#         outs[i] = RWell(xxs[i])
-#     outs = outs.reshape(Xs2d.shape[:2])
-#     outs = np.clip(outs, 0,5)
-#     plt.imshow(outs,cmap='jet')
-#     plt.show()
+# Piecewise potential landscape with 3 wells in 2D...
+from potwells import PWell
 
 # Piecewise potential landscape with 3 wells in 2D...
-height = 8e-26
-lwell = height * MultiPolynomial([1.5, 16, 32])
-mwell = height * MultiPolynomial([1, 0,  -11.5])
-rwell = height * MultiPolynomial([1.5,-16, 32])
-c1 = MultiPolynomial([-1,3])
-c2 = MultiPolynomial([-1,-3])
-PLWell = PiecewisePolynomial(mwell,  rwell, c1)
-PWell  = PiecewisePolynomial(lwell, PLWell, c2)
+from potwells import p_trip
 
-# Piecewise potential landscape with three wells in 2D
-scale = 2e-26
-w1 = scale * MultiPolynomial([[0, 0, 1], [0, 0, -14], [1, 8, 0]])
-w2 = scale * MultiPolynomial([[0, 0, 1], [0, 0,  14], [1, 8, 0]])
-# w3 = scale * MultiPolynomial([[0, 0, 0.5], [0, 0, 0], [0.5, -4, -48]])
-w3 = scale * 0.75 * MultiPolynomial([[0, 0, 0.75], [0, 0, 0], [0.75, -6, -72]])
-c1  = MultiPolynomial([[0,1],[0,0]])
-c21 = MultiPolynomial([[0,-1],[2,5]])
-c22 = MultiPolynomial([[0,1],[2, 5]])
-c2c = MultiPolynomial([[0,1],[0,0]])
-c2 = PiecewisePolynomial(c21, c22, c2c)
-p1  = PiecewisePolynomial(w1, w2, c1)
-p_trip  = PiecewisePolynomial(w3, p1, c2)
+# Narrow-ish double well
+from potwells import NWell
+
+# Harmonic well
+from potwells import HWell
 
 # Hexagonally distributed potential wells...
-# Regular hexagon with side length 1
-# centers at: (1,0), (cos(pi/3), sin(pi/3)), (cos(2*pi/3), sin(2*pi/3)), ...
-n_points = 6
-cr = 1 #circumradius
-centers = cr*np.array([(np.cos(2*np.pi*k/n_points), np.sin(2*np.pi*k/n_points)) for k in range(n_points)])
-barriers = []
-for k in range(n_points):
-    # (c,s) . (x, y) = 0 are the dividing lines
-    # (-sd, cd) . (x, y) is the projection onto the normal of the dividing line
-    angle = (2*np.pi * (k+1/2)  / n_points) % (2*np.pi)
-    s = np.sin(angle)
-    c = np.cos(angle)
-    d = np.sign(c) # direction
-    tmp_barr = MultiPolynomial([[0,-s*d],[c*d,0]]) # [[xy, x], [y, 1]]
-    barriers.append(tmp_barr)
-
-    
-# Defining regular potential wells based on coefficients
-
-a = np.array(1e-25, dtype=np.double)
-HWell = a * MultiPolynomial([              1, 0, 0]) # harmonic
-# NWell = 5e-27 * MultiPolynomial([1,  0, -40, 0, 0]) # narrow (double) well
-NWell = 1e-27 * MultiPolynomial([1,  0, -40, 0, 0]) # not-so-narrow (double) well
-
-T3Well = 4e-27 * MultiPolynomial(T3Coeffs) # triple
-# TWell = 4e-25 * MultiPolynomial(TriCoeffs)
-RWell = 9e-28 * MultiPolynomial(RipCoeffs)
+def polyg_well_gen(n_points = 6, cr = 1):
+    """Input: n_points - number of points to put on the circumference of a circle
+    cr - circumradius of the polygon / radius of the circle where the points lie
+    """
+    centers = cr*np.array([(np.cos(2*np.pi*k/n_points), np.sin(2*np.pi*k/n_points)) for k in range(n_points)])
+    barriers = []
+    for k in range(n_points):
+        # (c,s) . (x, y) = 0 are the dividing lines
+        # (-sd, cd) . (x, y) is the projection onto the normal of the dividing line
+        angle = (2*np.pi * (k+1/2)  / n_points) % (2*np.pi)
+        s = np.sin(angle)
+        c = np.cos(angle)
+        d = np.sign(c) # direction
+        tmp_barr = MultiPolynomial([[0,-s*d],[c*d,0]]) # [[xy, x], [y, 1]]
+        barriers.append(tmp_barr)
 
 
-# (x+4)(x+5)*(x-4)(x-5)*x*x has 3 local minima
-# --> x^6 - 41 x^4 + 400 x^2
-TWell = 4e-28 * MultiPolynomial([1, 0, -50, 0, 625, 0, 0]) # triple
+
+
 
 # plot a couple of the wells
 xs = np.arange(-10, 10, 0.01)
 plt.plot(xs, NWell(xs))
-# plt.plot(xs, TWell(xs))
 plt.plot(xs, PWell(xs))
+# plt.plot(xs, TWell(xs))
 plt.show()
+
+########## Prepare and run the simulation ####################################
 
 # Set up the particles
 p1 = Particle(NWell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
-
-# # Spit out the coordinates (and control the different trajectories...)
 
 npart = 2
 particles = [p1,
@@ -218,17 +153,18 @@ for i in range(npart):
     dimensions += particles[i].dim
 print("Dimensions:", dimensions)
 tracks = np.zeros((nsteps, dimensions), dtype=np.float32)
+
+# run the actual simulation
 for i in tqdm(range(tracks.shape[0])):
     j = 0
-    # if i == 380:
-    #     pdb.set_trace()
-    # pdb.set_trace()
     for p in particles:
         p.step()
         pdim = p.dim
         tracks[i,j:j+pdim] = p.pos
         j+= pdim
-    # print(("Time %d ps: " % i), tracks[i,:])
+
+        
+########## Visualization and saving ##########################################
 
 def save_file():
     h5file = h5py.File('data/SimOutput.h5', 'w')
@@ -240,18 +176,15 @@ def save_file():
 # b = h5file['particle_tracks'][:]
 # h5file.close()
 
-print("Fraction of time particle 1 spends on the right of 0:", np.sum(tracks[:,0] >= 0)/tracks.shape[0])
+print("Fraction of time particle 1 spends on the right of 0:", (tracks[:,0] >= 0).mean())
 
 plt.plot(np.arange(0,(i+1)*tstep, tstep), tracks)
 plt.show()
 
-# Hist, edges = np.histogram(tracks[:,0], bins = 30)
-# plt.plot(0.5*(edges[1:]+edges[:-1]),Hist)
-# plt.show()
-
-plt.hist2d(tracks[:,0], tracks[:,1], bins = 30)
+plt.hist2d(tracks[:,0], tracks[:,1], bins = 60, cmap = 'jet')
 plt.show()
 
-to_save = input("Do you want to save this particle tracks? (y/n) (If you're in console mode, you can save later manually with 'save_file')  ")
+to_save = input("Do you want to save this particle tracks? (y/n) (If you're in "
+                "console mode, you can save later manually with 'save_file')  ")
 if to_save.lower() == 'y' or to_save.lower() == 'yes':
     save_file()
