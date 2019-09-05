@@ -125,6 +125,9 @@ class VAE(nn.Module):
             eps = torch.tensor(np.random.normal(0, 1, eps_shape), dtype=self.data_type)
             # eps contains a randomly pulled number for each example in the minibatch
             res += torch.exp(log_var*0.5) * eps # elementwise multiplication is desired
+        # # Trying to encourage periodicity...
+        # period = 5.0/np.pi
+        # res = ((res + period/2) % period) - period/2 # from -period/2 to +period/2
         return res
 
     def decode(self, z):

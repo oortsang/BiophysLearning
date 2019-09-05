@@ -109,7 +109,7 @@ from potwells import HWell
 
 # Hexagonally arranged wells
 from potwells import polyg_well_gen
-hexawell = 3e-25 * polyg_well_gen(n_points = 6)
+heptawell = 3e-25 * polyg_well_gen(n_points = 7, well_str = 1.5)
 
 # # plot a couple of the wells
 # xs = np.arange(-10, 10, 0.01)
@@ -121,7 +121,7 @@ hexawell = 3e-25 * polyg_well_gen(n_points = 6)
 ########## Prepare and run the simulation ####################################
 
 # Set up the particles
-p1 = Particle(hexawell, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(heptawell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
 npart = 1
