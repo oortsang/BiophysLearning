@@ -64,18 +64,18 @@ p1     = PiecewisePolynomial(w1, w2, c1)
 p_trip = PiecewisePolynomial(w3, p1, c2)
 
 # Generate regular-polygonally-distributed potential wells
-def polyg_well_gen(n_points = 6, cr = 1, well_str = 1):
+def polyg_well_gen(n_points = 6, cr = 2, well_str = 2):
     """Generates regular-polygonally-distributed potential wells
     Input: n_points (int) - number of points to put on the circumference of a circle
            cr (float) - circumradius of the polygon / radius of the circle where the points lie
     """
-    centers = cr*np.array([(np.cos(2*np.pi*k/n_points), np.sin(2*np.pi*k/n_points)) for k in range(n_points)])
+    centers = cr*np.array([(np.cos(2*np.pi*(k)/n_points), np.sin(2*np.pi*(k)/n_points)) for k in range(n_points)])
     barriers = []
     wells = []
     for k in range(n_points):
         # (c,s) . (x, y) = 0 are the dividing lines
         # (-sd, cd) . (x, y) is the projection onto the normal of the dividing line
-        angle = (2*np.pi * (k+1/2)  / n_points) % (2*np.pi)
+        angle = (2*np.pi * (k-0.5)  / n_points) % (2*np.pi)
         s = np.sin(angle)
         c = np.cos(angle)
         tmp_barr = [[0,-s],[c,0]] # [[xy, x], [y, 1]]
@@ -106,19 +106,42 @@ def polyg_well_gen(n_points = 6, cr = 1, well_str = 1):
 
             choices = np.zeros(out.shape[0], np.int)
             choices[rows]  = js
-        elif len(idcs) == 1:
+        elif len(idcs) == 1 and len(idcs[0]) > 0:
             choices = idcs[0].item()
         else:
             choices = 0 # default...
         return choices
 
     return EasyPiecewise(wells, picker)
-    # return picker
 
-hexawell = polyg_well_gen()
-pt = np.array((1,1))
-pts = np.array(((0,1), (1,0), (1,1), (0,0)))
+hexawell = polyg_well_gen(n_points = 6)
 
+# # Graph in 2D
+# xs = np.arange(-5, 5, 0.05)
+# xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, xs.shape[0])])\
+#        .reshape((xs.shape[0], xs.shape[0], 2))
+# xxs = xs2d.reshape(xs2d.shape[0]*xs2d.shape[1], xs2d.shape[2])
+# outs = hexawell(xxs)
+# outp = outs.reshape(xs2d.shape[:2])
+# outpc = np.clip(outp, 0, 5)
+# import matplotlib.pyplot as plt
+# plt.imshow(outpc)
+# plt.show()
+
+
+# # Draw a 3D wireframe
+# from mpl_toolkits.mplot3d import axes3d
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
+# xs = np.arange(-4, 4, 0.05)
+# ys = np.arange(-4, 4, 0.05)
+# inputs = np.transpose([np.tile(xs, ys.shape[0]), np.repeat(ys, xs.shape[0])])
+# zs = hexawell(inputs)
+# zs = zs.reshape(xs.shape[0], ys.shape[0])
+# xxs = np.repeat(xs, ys.shape[0]).reshape(zs.shape)
+# yys = np.repeat(ys, xs.shape[0]).reshape(zs.shape).T
+# ax.plot_wireframe(xxs, yys, zs)
+# plt.show()
 
 ########## Potential wells that could be potentially useful ##################
 

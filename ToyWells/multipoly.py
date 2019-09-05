@@ -167,19 +167,19 @@ class EasyPiecewise():
     def eval(self, x):
         """Returns the value of the function at the given point. The function is decided by the value of the c function (which could be a piecewise polynomial itself)"""
         xx = np.array(x) # so that we can check the ndim even if the input isn't a numpy array
+        # import pdb; pdb.set_trace()
         if xx.ndim > 1 or (xx.ndim == 1 and self.dim == 1): # If the inputs xx come as a list,
             val_shape = (*xx.shape[:-1], self.return_dim)   #  prepare the shape of the output
             if x.ndim == 1 or self.return_dim == 1:         # If our input is low-dimensional,
                 val_shape = (x.shape[0], )                  #  shape the outputs appropriately
             val = np.zeros(val_shape, dtype = np.double)
-
             conds = self.cs(x)
             for pi in range(len(self.ps)):
                 pi_idcs = (conds == pi)
                 if x.ndim == 1 or self.return_dim == 1: # massage
                     pi_idcs = pi_idcs.flatten()
                 if np.any(pi_idcs):
-                    val[pi_idcs] = self.ps[pi](x[pi_idcs])
+                    val[pi_idcs] = self.ps[pi](x[pi_idcs].squeeze())
         else:
             idx = self.cs(xx)
             val = (self.ps[idx]) (xx)
@@ -194,10 +194,10 @@ class EasyPiecewise():
         return self.eval(x)
 
     def __mul__(self, a):
-        return self.__class__([a*p for p in self.ps], self.c)
+        return self.__class__([a*p for p in self.ps], self.cs)
 
     def __rmul__(self, a):
-        return self.__class__([a*p for p in self.ps], self.c)
+        return self.__class__([a*p for p in self.ps], self.cs)
 
 
 

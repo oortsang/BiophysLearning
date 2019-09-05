@@ -77,7 +77,7 @@ model_param_fname = "data/model_parameters"
 variational = True
 time_lagged = True
 propagator  = True
-denoising   = False
+denoising   = True
 
 if time_lagged:
     sim_data = tla_sim_data
@@ -93,11 +93,11 @@ in_dim = sim_data.data[:].shape[1]
 if time_lagged:
     in_dim //= 2
 
-h_size = in_dim + 2 # size of hidden layers -- don't have to all be the same size though!
+h_size = in_dim + 5 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
 dropout_input  = 0.0
 dropout_hidden = 0.1
-dropout_low    = 0.0
+dropout_low    = 0.05
 
 mean_act = nn.ReLU
 var_act  = nn.ReLU
@@ -108,7 +108,9 @@ encode_layers_means = [nn.Dropout(dropout_input),
                        mean_act(),
 
                        nn.Linear(h_size, h_size),
+                       nn.Dropout(dropout_low),
                        mean_act(),
+
                        nn.Linear(h_size, n_z)
                        # just linear combination without activation
                       ]
@@ -117,8 +119,10 @@ encode_layers_vars  = [nn.Dropout(dropout_input),
                        nn.Dropout(dropout_hidden),
                        var_act(),
 
-                       # nn.Linear(h_size, h_size),
-                       # nn.ReLU(),
+                       nn.Linear(h_size, h_size),
+                       nn.Dropout(dropout_low),
+                       var_act(),
+
                        nn.Linear(h_size, n_z)
                       ]
 
@@ -129,14 +133,18 @@ decode_layers_means = [nn.Linear(n_z, h_size),
                        nn.Linear(h_size, h_size),
                        nn.Dropout(dropout_hidden),
                        mean_act(),
+
                        nn.Linear(h_size,in_dim)
                       ]
 
 decode_layers_vars  = [nn.Linear(n_z, h_size),
                        nn.Dropout(dropout_hidden),
                        var_act(),
-                       # nn.Linear(h_size, h_size),
-                       # var_act(),
+
+                       nn.Linear(h_size, h_size),
+                       nn.Dropout(dropout_hidden),
+                       var_act(),
+
                        nn.Linear(h_size, in_dim)
                       ]
 
@@ -161,7 +169,7 @@ weight_decay = 1e-6    # weight decay -- how much of a penalty to give to the ma
 momentum = 1e-5     # momentum -- only does anything if SGD is selected because Adam does its own stuff with momentum.
 denoise_sig = 0.001
 
-pxz_var_init = -np.log(600) # How much weight to give to the KL-Divergence term in loss?
+pxz_var_init = -np.log(1500) # How much weight to give to the KL-Divergence term in loss?
     # Changing this is as if we had chosen a sigma differently for (pred - truth)**2 / sigma**2, but parameterized differently.
     # See Doersch's tutorial on autoencoders, pg 14 (https://arxiv.org/pdf/1606.05908.pdf) for his comment on regularization.
 
@@ -385,7 +393,7 @@ if __name__ == "__main__":
         duration = time.time() - start_time
         print("%f seconds have elapsed since the training began\n" % duration)
 
-        if epoch == 3:
+        if epoch == 2:
             vae_model.varnet_weight += 1
 
         cutoff = 5

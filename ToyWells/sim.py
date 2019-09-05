@@ -71,10 +71,15 @@ class Particle():
 
         self.pos += step_size
 
+def grid_maker(xs):
+    # returns a square grid given the points desired
+    cart_prod = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, xs.shape[0])])
+    return cart_prod.reshape(xs.shape[0], xs.shape[0], 2)
+
 def plot2d(potwell):
     """Plots a 2D potential well"""
     xs = np.arange(-5, 5, 0.05)
-    Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, len(xs))])\
+    Xs2d = np.transpose([np.tile(xs, xs.shape[0]), np.repeat(xs, xs.shape[0])])\
              .reshape((xs.shape[0], xs.shape[0], 2)) # make a grid
     xxs = Xs2d.reshape(Xs2d.shape[0]* Xs2d.shape[1], Xs2d.shape[2])
     outs = np.zeros(xxs.shape[0])
@@ -102,21 +107,24 @@ from potwells import NWell
 # Harmonic well
 from potwells import HWell
 
+# Hexagonally arranged wells
+from potwells import polyg_well_gen
+hexawell = 3e-25 * polyg_well_gen(n_points = 6)
 
-# plot a couple of the wells
-xs = np.arange(-10, 10, 0.01)
-plt.plot(xs, NWell(xs))
-plt.plot(xs, PWell(xs))
-# plt.plot(xs, TWell(xs))
-plt.show()
+# # plot a couple of the wells
+# xs = np.arange(-10, 10, 0.01)
+# plt.plot(xs, NWell(xs))
+# plt.plot(xs, PWell(xs))
+# # plt.plot(xs, TWell(xs))
+# plt.show()
 
 ########## Prepare and run the simulation ####################################
 
 # Set up the particles
-p1 = Particle(NWell, D = 0.01, nsize = 1, pos = 0)
+p1 = Particle(hexawell, D = 0.01, nsize = 1, pos = 0)
 p2 = Particle(HWell, D = 0.1, nsize = 1, pos = -1)
 
-npart = 2
+npart = 1
 particles = [p1,
              p2,
              # p3,
