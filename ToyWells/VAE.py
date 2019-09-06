@@ -182,7 +182,8 @@ class VAE(nn.Module):
         # but probably in some paper (2-3 lines from Doersch + diagonal covariance matrix assn.)
         kl_div = 0
         if self.variational:
-            kl_div = 0.5 * (kl_lambda * self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var)).sum()
+            kl_div = 0.5 * (0.8 * self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var)).sum()
+            # kl_div = 0.5 * (self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var)).sum()
 
         return (self.rec_loss + kl_lambda * kl_div) / pred_means.shape[0]
 

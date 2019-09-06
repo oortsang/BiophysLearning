@@ -379,7 +379,7 @@ if __name__ == "__main__":
 
     # Now actually do the training
     for epoch in range(n_epochs):
-        kl_lambda = np.clip(n_epochs/10, 0.1, 1)
+        kl_lambda = np.clip(n_epochs/10, 0.5, 1)
         trainer(vae_model, optimizer, epoch, models, loss_array, kl_lambda)
         val_loss, val_rec_loss = test(vae_model, val_set)
         print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
