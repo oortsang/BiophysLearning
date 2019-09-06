@@ -93,7 +93,7 @@ in_dim = sim_data.data[:].shape[1]
 if time_lagged:
     in_dim //= 2
 
-h_size = in_dim + 4 # size of hidden layers -- don't have to all be the same size though!
+h_size = in_dim + 3 # size of hidden layers -- don't have to all be the same size though!
 n_z    = 1 # dimensionality of latent space
 dropout_input  = 0.0
 dropout_hidden = 0.05
@@ -119,9 +119,9 @@ encode_layers_vars  = [nn.Dropout(dropout_input),
                        nn.Dropout(dropout_hidden),
                        var_act(),
 
-                       nn.Linear(h_size, h_size),
-                       nn.Dropout(dropout_hidden),
-                       var_act(),
+                       # nn.Linear(h_size, h_size),
+                       # nn.Dropout(dropout_hidden),
+                       # var_act(),
 
                        nn.Linear(h_size, h_size),
                        nn.Dropout(dropout_low),
@@ -145,9 +145,9 @@ decode_layers_vars  = [nn.Linear(n_z, h_size),
                        nn.Dropout(dropout_hidden),
                        var_act(),
 
-                       nn.Linear(h_size, h_size),
-                       nn.Dropout(dropout_hidden),
-                       var_act(),
+                       # nn.Linear(h_size, h_size),
+                       # nn.Dropout(dropout_hidden),
+                       # var_act(),
 
                        nn.Linear(h_size, h_size),
                        nn.Dropout(dropout_hidden),
@@ -217,7 +217,7 @@ else:
 
 
 ###  train the network!  ###
-def trainer(model, optimizer, epoch, models, loss_array):
+def trainer(model, optimizer, epoch, models, loss_array, kl_lambda = 1):
     """Train for one epoch
 
     Arguments:
@@ -226,6 +226,7 @@ def trainer(model, optimizer, epoch, models, loss_array):
         epoch     (int): the number of the current epoch
         models  (list of VAEs): array to hold old models
         loss_array  (list of floats): list of rec losses
+        kl_lambda (scalar): weighting of the KL-div term
     """
     epoch_fail = 0 # loss for the epoch # credit to xkcd for the variable name
 
@@ -250,12 +251,12 @@ def trainer(model, optimizer, epoch, models, loss_array):
 
         # get loss
         if fut_steps == 0:
-            loss     = model.vae_loss(recon_means[0], recon_lvs[0], goal_data)
+            loss     = model.vae_loss(recon_means[0], recon_lvs[0], goal_data, kl_lambda)
             rec_loss = model.rec_loss.item()/train_data.shape[0] # reconstruction loss
         else:
-            loss     =  model.vae_loss(recon_means[0], recon_lvs[0], goal_data)
+            loss     =  model.vae_loss(recon_means[0], recon_lvs[0], goal_data, kl_lambda)
             rec_loss =  model.rec_loss.item()/train_data.shape[0] # reconstruction loss
-            loss     += model.vae_loss(recon_means[1], recon_lvs[1], goal_data) * model.discount
+            loss     += model.vae_loss(recon_means[1], recon_lvs[1], goal_data, kl_lambda) * model.discount
             rec_loss += model.rec_loss.item()/train_data.shape[0] # reconstruction loss
         loss_scalar = loss.item()
         epoch_fail += rec_loss
@@ -374,10 +375,12 @@ if __name__ == "__main__":
     weight = 0.99
     wavg_loss_array = []
     start_time = time.time() # Keep track of run time
+    kl_lambda = 1
 
     # Now actually do the training
     for epoch in range(n_epochs):
-        trainer(vae_model, optimizer, epoch, models, loss_array)
+        kl_lambda = np.clip(n_epochs/10, 0.1, 1)
+        trainer(vae_model, optimizer, epoch, models, loss_array, kl_lambda)
         val_loss, val_rec_loss = test(vae_model, val_set)
         print("Got %f validation loss (%f reconstruction)" % (val_loss, val_rec_loss))
         # val_loss_array.append(val_loss)

@@ -88,21 +88,6 @@ class VAE(nn.Module):
         if self.time_lagged and propagator_layers is not None:
             self.propagator_net = converter(self.propagator_net)
 
-        # if self.data_type == torch.float:
-        #     self.encode_net_means = self.encode_net_means.float()
-        #     self.encode_net_vars  = self.encode_net_vars.float()
-        #     self.decode_net_means = self.decode_net_means.float()
-        #     self.decode_net_vars  = self.decode_net_vars.float()
-        #     if self.time_lagged and propagator_layers is not None:
-        #         self.propagator_net = self.propagator_net.float()
-        # else:
-        #     self.encode_net_means = self.encode_net_means.double()
-        #     self.encode_net_vars  = self.encode_net_vars.double()
-        #     self.decode_net_means = self.decode_net_means.double()
-        #     self.decode_net_vars  = self.decode_net_vars.double()
-        #     if self.time_lagged and propagator_layers is not None:
-        #         self.propagator_net = self.propagator_net.double()
-
     def encode(self, x):
         """Encoding from x (input) to z (latent).
         Returns the probability distribution in terms of mean and log-variance of a gaussian"""
@@ -133,11 +118,6 @@ class VAE(nn.Module):
         output_lv = self.out_lv_ests + torch.clamp(self.varnet_weight, 0,1) * self.decode_net_vars(z)
         self.xp = (output_mu, output_lv)
         return self.xp
-        # tmp = self.prelim_net(z)
-        # output_mu = self.decode_net_means(tmp)
-        # output_lv = np.log(self.pxz_var_init) + self.decode_net_vars(tmp)
-        # self.xp = (output_mu, output_lv)
-        # return self.xp
 
     # run through encoder, sampler, and decoder
     def forward(self, x, return_np = False):
@@ -157,14 +137,10 @@ class VAE(nn.Module):
 
         if self.always_random_sample and not self.training:
             xp_dist = (x_decoded, xp_dist[1])
-
-        # import pdb; pdb.set_trace()
+ 
         if not self.time_lagged or self.propagator_net is None:
             return (0, xp_dist[0][np.newaxis], xp_dist[1][np.newaxis])
-            # Decoding returns the max-likelihood option rather than a full prob dist
-            # which seems to be desired behavior.. There's a Gaussian centered around
-            # it, which is where we get the square-loss for reconstruction error... see Doersch...
-        else:
+         else:
             fut_steps = 1
             self.z_fut = z_sample
 
@@ -192,10 +168,8 @@ class VAE(nn.Module):
         if not self.variational:
             self.rec_loss = torch.sum((pred_means - truth)**2) # maybe replace with a pytorch function
         else:
-            # self.rec_loss = 0.5*(pred_lvs+torch.exp(-pred_lvs)*(pred_means-truth)**2).sum(1)
             self.rec_loss = 0.5*(np.log(2*np.pi) + pred_lvs
                                  + torch.exp(-pred_lvs)*(pred_means-truth)**2).sum()
-            # self.rec_loss = self.rec_loss.sum()
 
         # KL[q(z|x) || p(z)] - Kullback-Leibler divergence
         # E [ log(q(z|x)) - log(p(z)) ] using Q for the weighting on the expected value
@@ -207,16 +181,7 @@ class VAE(nn.Module):
         kl_div = 0
         if self.variational:
             kl_div = 0.5 * (self.mu*self.mu - 1 - self.log_var + torch.exp(self.log_var)).sum()
-            # kl_div = kl_div.sum()
 
-        # return (self.rec_loss + self.pxz_var_init*kl_div) / pred_means.shape[0]
-
-        # # Regularization term to punish latent variables from being too far
-        # if self.time_lagged and self.propagator_net is not None:
-        #     reg_loss = ((self.z_fut - self.encode(truth)[0])**2).sum()
-        # else:
-        #     reg_loss = 0
-        # return (self.rec_loss + kl_div + 0.01 * reg_loss) / pred_means.shape[0]
         return (self.rec_loss + kl_lambda * kl_div) / pred_means.shape[0]
 
     def just_encode(self, x):
